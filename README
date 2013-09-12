@@ -1,0 +1,2 @@
+gdalwarp -te 288845 7342521 805227 7953325 -t_srs EPSG:32733 -tr 100 100
+South_Africa_SRTM.tif Namibia_UTM33S_100m.tif

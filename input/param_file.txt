@@ -1,0 +1,39 @@
+! This is the input file for the CFC (Community Family Circle) algorithm
+!
+! Name of the RUN
+NAMIBIA
+! Name of the database
+Sample_locations_Raab2002.txt
+! Name of the output file
+South-Africa_out.txt
+! cutoff wavelenght
+100000
+! CIRCLE DEF 1:RADIUS, 2:NCLOSEST, 3:VORONOI
+1
+! Radius of the circle (in km)
+25
+! Name of the DEM file, note that the program is going to check if a highpass topography file exist
+! file_name.flt, if not the file will be created and the calculation could take time
+! My advice would be to filter the topography using a dedicated GIS software such as GRASS.
+! In that case the file will have to use UTM35S projection and WGS84 datum 
+Namibia_lowres.asc
+! Geothermal gradient (used to calculate the temperature offsets between samples. This can be a range
+! In that case the program try to find the optimum value of the gradient for each inversion (each circle)
+! in °C/km
+25:30
+!
+5.
+! Number of output map
+11
+! Output at time (Ma BP):
+0
+10
+20
+30
+40
+50
+60
+70
+80
+90
+100

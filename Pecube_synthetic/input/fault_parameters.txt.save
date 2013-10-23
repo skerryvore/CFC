@@ -1,0 +1,54 @@
+$ number of faults active at any time during the run
+1
+
+$ two points (in longitude-latitude) defining the y axis of the
+$ coordinate system used to define the faults
+$ the x-axis is to the right of the y-axis
+$ First Fault at the border of the model to define a background 
+$ exhumation rate
+14.66 -22.16667 14.66 -20.33334
+
+$ BACKGROUND
+$ number of segments
+-1
+$ segment (x,y) coordinates
+1. 1. 1. 1.
+
+$ number of time intervals to define its motion story
+3
+$ time interval (in geological time) and velocity
+$ thrust is negative, normal is positive
+60. 40. 0.01
+40. 20. 0.3
+20. 0. 0.01
+
+$$ FAULT 1
+$$ number of segments
+$2
+$$ segment (x,y) coordinates
+$0. 0.
+$0. -40.
+$
+$$ number of time intervals to define its motion story
+$3
+$$ time interval (in geological time) and velocity
+$$ thrust is negative, normal is positive
+$60. 40. 0.
+$40. 20. 1.0
+$20. 0. 0.
+$
+$
+$$ FAULT 2
+$$ number of segments
+$2
+$$ segment (x,y) coordinates
+$200. 0.
+$200. -40.
+$
+$$ number of time intervals to define its motion story
+$3
+$$ time interval (in geological time) and velocity
+$$ thrust is negative, normal is positive
+$60. 40. 0.
+$40. 20. -1.0
+$20. 0. 0.

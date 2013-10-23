@@ -1,0 +1,57 @@
+$ number of faults active at any time during the run
+3
+
+$ two points (in longitude-latitude) defining the y axis of the
+$ coordinate system used to define the faults
+$ the x-axis is to the right of the y-axis
+$ First Fault at the border of the model to define a background 
+$ exhumation rate
+13.0 -24.0 13.0 -18.0
+
+$ faults bounding a central block
+14.66 -22.16667 14.66 -20.33334
+16.33 -22.16667 16.33 -20.33334
+
+$ BACKGROUND UPLIFT
+$ fault 1
+$ number of segments
+2
+$ segment (x,y) coordinates
+0. 0.
+0. -40.
+
+$ number of time intervals to define its motion story
+1
+$ time interval (in geological time) and velocity
+$ thrust is negative, normal is positive
+100. 0. -0.5
+
+$ BOUNDING FAULT 1
+$ number of segments
+2
+$ segment (x,y) coordinates
+0. 0.
+0. -40.
+
+$ number of time intervals to define its motion story
+1
+$ time interval (in geological time) and velocity
+$ thrust is negative, normal is positive
+$ Total uplift equal movement on the fault plane plus
+$ background uplift
+100. 0. -0.5
+
+$ BOUNDING FAULT 2 (Used to counter the movement of
+$ the previous fault
+$ number of segments
+2
+$ segment (x,y) coordinates
+0. 0.
+0. -40.
+
+$ number of time intervals to define its motion story
+1
+$ time interval (in geological time) and velocity
+$ thrust is negative, normal is positive
+100. 0. 0.5
+

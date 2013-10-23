@@ -1,0 +1,20 @@
+$ number of faults active at any time during the run
+1
+
+$ two points (in longitude-latitude) defining the y axis of the
+$ coordinate system used to define the faults
+$ the x-axis is to the right of the y-axis
+169.5 -43.75 171.5 -42.72
+
+$ first fault (MFT, mouvement inde)
+$ number of segments
+-1
+$ segment (x,y) coordinates
+1. 1. 1. 1.
+
+$ number of time intervals to define its motion story
+2
+$ time interval (in geological time) and velocity
+$ thrust is negative, normal is positive
+100. 110.:70. 1.
+* 0. 0.02:0.04

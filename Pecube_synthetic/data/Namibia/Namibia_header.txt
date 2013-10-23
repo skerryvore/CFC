@@ -1,0 +1,5 @@
+ncols        600
+nrows        660
+xllcorner    13.000000000000
+yllcorner    -23.999999780000
+cellsize     0.008333333000

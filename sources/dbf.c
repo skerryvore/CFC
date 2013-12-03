@@ -6,7 +6,7 @@
 
 void createDBF(const char *DBFfilename, int id[], int nsamp, double Lon[], double Lat[],\
                double Elevation[], char **SampName, double Temperature[], double ErosionRate[], \
-	       double Geotherm[], double ExhumationRate[])
+	       double Geotherm[], double ExhumationRate[], double FTage[])
 {
 
     DBFHandle	hDBF;
@@ -27,6 +27,7 @@ void createDBF(const char *DBFfilename, int id[], int nsamp, double Lon[], doubl
     DBFAddField( hDBF , "E.Rate" , FTDouble , 10 , 1 );
     DBFAddField( hDBF , "Geoth." , FTDouble , 10 , 1 );
     DBFAddField( hDBF , "Ex.Rate" , FTDouble , 10 , 1 );
+    DBFAddField( hDBF , "FT.age" , FTDouble , 10 , 1 );
 
     for(i=0; i < nsamp; i++)
     {
@@ -41,6 +42,7 @@ void createDBF(const char *DBFfilename, int id[], int nsamp, double Lon[], doubl
     DBFWriteDoubleAttribute(hDBF, iRecord, 6, ErosionRate[i]);
     DBFWriteDoubleAttribute(hDBF, iRecord, 7, Geotherm[i]);
     DBFWriteDoubleAttribute(hDBF, iRecord, 8, ExhumationRate[i]);
+    DBFWriteDoubleAttribute(hDBF, iRecord, 9, FTage[i]);
     }
 
     DBFClose( hDBF );

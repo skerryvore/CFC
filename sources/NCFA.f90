@@ -109,13 +109,13 @@ implicit none
 
   interface
     subroutine createDBF(dbffilename, id, nsamp, sampx, sampy, sampz, sampname &
-	&, temp, ERate, Geo, ExRate) bind(C, name="createDBF")
+	&, temp, ERate, Geo, ExRate, Ftage) bind(C, name="createDBF")
       use iso_c_binding
       character(kind=c_char), dimension(*) :: dbffilename
       integer(kind=c_int), value :: nsamp
       integer(kind=c_int), dimension(*) :: id
       real(kind = c_double), dimension(*) ::  sampx, sampy, sampz, temp, ERate
-      real(kind = c_double), dimension(*) ::  Geo, ExRate
+      real(kind = c_double), dimension(*) ::  Geo, ExRate, Ftage
       type(c_ptr), dimension(*) :: sampname
     end subroutine
   end interface
@@ -771,7 +771,8 @@ implicit none
       & real(sample(:)%dem_elevation, c_double), stringPtrs(1:ndata),&
       & real(sample(:)%temp_rec(J), c_double), real(sample(:)%ERate_rec(J), c_double),&
       & real(sample(:)%optimum_geotherm,c_double), &
-      & real(sample(:)%ERate_rec(J) / sample(:)%optimum_geotherm, c_double))
+      & real(sample(:)%ERate_rec(J) / sample(:)%optimum_geotherm, c_double), &
+      & real(sample(:)%FTage, c_double))
 
   end do
 

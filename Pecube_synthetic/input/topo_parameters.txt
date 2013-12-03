@@ -36,7 +36,7 @@ $ (5) a skipping factor (1 means all points of the topography are used; 2 means 
 $     every second point is used etc). Note that nx, ny AND nskip define the resolution of the
 $     finite element grid in the horizontal directions
 $     again this is not used in case nx and ny are negative (random grid)
-2
+1
 
 $ (6) the longitude and latitude of the bottom left corner of the topo file
 $170. -43.

@@ -75,6 +75,15 @@ implicit none
   TYPE(C_PTR), DIMENSION(200) :: stringPtrs
   integer :: UTM_zone
 
+  ! List of variables used by TRIPACK
+  integer, dimension(:), allocatable :: LIST, LPTR, LEND, NEAR, NEXT
+  integer :: IER, LNEW
+  real(kind=r8),dimension(:), allocatable :: DIST
+
+  ! List of variables used by TROUTQ
+  integer :: NCC, LCC(1), LOUT, NAT, NB, NT
+  integer,dimension(:), allocatable :: NNABS, NPTR, NPTR1, NABOR, NBNOS  
+
   common/invert_type/time_sequence  
   common /NA_MPI/iproc,nproc,lroot
   common /NA_misfit_info/mfitmin,mopt,model_opt,sampleID
@@ -459,6 +468,9 @@ implicit none
   end do
 
   kk = 0
+  
+  if(CIRCLE_DEF /= VORONOI) then
+
   do I = 1,ndata
 
     select case(CIRCLE_DEF)
@@ -544,10 +556,82 @@ implicit none
 	deallocate(idx)
       end do
 
-      case(VORONOI)
+    end select
+      
+    end do
+  end if
 
-    end select	
-  enddo
+  if(CIRCLE_DEF == VORONOI) then 
+	! Initialize arrays, LIST, LPTR, LEND, LNEW, NEAR, NEXT, DIST, IER
+	IER = 0
+	allocate(LIST(6 * ndata - 12))
+	allocate(LPTR(6 * ndata - 12))
+	allocate(LEND(ndata))
+	allocate(NEAR(ndata))
+	allocate(NEXT(ndata))
+	allocate(DIST(ndata))
+
+	! Calculate delaunay triangulation using TRIPACK
+        call TRMESH(ndata, sample%x, sample%y, LIST, LPTR, LEND,LNEW, NEAR, NEXT, DIST,IER) 
+        
+	if (IER /= 0) print*, "Error during triangulation"
+
+	! Find neigbours of each sample
+	NCC = 0
+	allocate(NNABS(ndata))
+	allocate(NPTR(ndata))
+	allocate(NPTR1(ndata))
+	allocate(NABOR(12*ndata)) ! Not sure about the optimum size
+	allocate(NBNOS(ndata))
+
+	call TROUTQ(NCC, LCC, ndata, sample%x, sample%y, LIST, LPTR, LEND, LOUT, NNABS, NPTR,&
+	           &  NPTR1, NABOR, NBNOS, NAT, NB, NT)
+
+	do I=1, ndata
+	  
+	  sample(I)%nneighbours = NNABS(I)
+	  kk = sample(I)%nneighbours
+
+	  sample(I)%neighbours(1:kk)       = NABOR(NPTR(I):NPTR1(I))
+          
+	  !sample(I)%neighbours_ncounts(kk) = sample(J)%ncounts
+	  !sample(I)%neighbours_zeta(kk)    = sample(J)%zeta
+	  !sample(I)%neighbours_rhodos(kk)  = sample(J)%rhod
+
+	  !do K=1, sample(J)%ncounts
+	  !  sample(I)%neighbours_NS(kk,K) = sample(J)%NS(K)
+	  !  sample(I)%neighbours_NI(kk,K) = sample(J)%NI(K)       
+	  !enddo 
+
+	  !sample(I)%neighbours_ages(kk)     = sample(J)%FTage
+	  !sample(I)%neighbours_ages_err(kk) = sample(J)%FTage_err
+	  !sample(I)%neighbours_ntl(kk)      = sample(J)%ntl
+
+	  !do K=1, sample(J)%ntl
+	  !  sample(I)%neighbours_TL(kk,K) = sample(J)%TL(K)
+	  !enddo
+
+	  !sample(I)%neighbours_MTL(kk)     = sample(J)%MTL
+	  !sample(I)%neighbours_MTL_err(kk) = sample(J)%MTL_err
+	  !sample(I)%neighbours_offsets(kk) = sample(J)%z-sample(J)%flt_elevation
+	  !sample(I)%neighbours_offsets(kk) = 0._r4
+
+        end do
+
+
+	deallocate(LIST)
+	deallocate(LPTR)
+	deallocate(LEND)
+	deallocate(NEAR)
+	deallocate(NEXT)
+	deallocate(DIST)
+	deallocate(NNABS)
+	deallocate(NPTR)
+	deallocate(NPTR1)
+	deallocate(NABOR)
+	deallocate(NBNOS)
+
+  end if
 
   ! Create an output showing the relationships between samples (Connection from
   ! centroid to samples circle)

@@ -21,7 +21,9 @@ read_mtx.o \
 NCFA.o \
 shape.o \
 dbf.o \
-gdal.o
+gdal.o \
+troutq.o \
+tripack.o
 
 
 .f90.o:

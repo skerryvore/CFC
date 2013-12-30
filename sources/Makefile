@@ -2,7 +2,7 @@
 
 # use these lines to produce a parallel (mpi) version to parallelize the inversion
 
-FLAGS = -g -lshp -lgdal -I/usr/include/gdal -c -O \
+FLAGS = -g -L./LIB/shapelib-1.3.0/ -lshp -lgdal -I/usr/include -c -O \
 #-fbounds-check \
  -fcheck-array-temporaries \
 # -Wall \
@@ -39,7 +39,7 @@ tripack.o
 	$(CC) $(FLAGS) $*.c
 
 NCFA:$(OBJECTS)
-	$(FF90) $(OBJECTS) -lshp -lgdal -I/usr/include/gdal -o ../bin/NCFA
+	$(FF90) $(OBJECTS) -L./LIB/shapelib-1.3.0 -lshp -lgdal -I/usr/include -o ../bin/NCFA
 	
 all: $(OBJECTS)
 	make NFCA

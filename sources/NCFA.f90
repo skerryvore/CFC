@@ -19,6 +19,7 @@ implicit none
   character(len = 200 ) :: param_file  
   character(len = 150 ) :: output_file
   character(len = 150 ) :: dem_file
+  character(len = 150 ) :: filtered_file
   character(len = 200 ) :: filename
   character(len = 200 ) :: tiffname
   character(len = 1024) :: line
@@ -31,6 +32,7 @@ implicit none
   real(kind=r4),allocatable,dimension(:,:) :: distances
   integer,allocatable,dimension(:,:) :: dem_topo,flt_topo
   integer :: nx_dem,ny_dem
+  integer :: nx_dem_flt,ny_dem_flt
   real(kind=r4) :: misfit
   real(kind=r8) :: rlon,rlat,rx,ry
   real(kind=r4)  :: range(2,1024)
@@ -48,6 +50,7 @@ implicit none
   real(kind=r4),dimension(:),allocatable :: RWK
   real(kind=r4),dimension(:),allocatable :: IWK
   real(kind=r4) :: xllcorner,yllcorner,cellsize
+  real(kind=r4) :: xllcorner_flt,yllcorner_flt,cellsize_flt
   real(kind=r4),dimension(:),allocatable :: tspan
   real(kind=r4) :: interp1
   real(kind=r4) :: dt
@@ -166,6 +169,7 @@ implicit none
       read(LU_param,*) ncloc
   end select
   read(LU_param,*) dem_file ! read name of dem file  
+  read(LU_param,*) filtered_file ! read name of dem file  
   read (LU_param,'(a1024)') line
   icol=scan(line,':')
   if (icol.ne.0) then
@@ -186,172 +190,60 @@ implicit none
   end do
 
   circle=circle*1000 ! Convert to m 
-  
+
   ! Check if a filtered topography file exists:
-  inquire(FILE="./DEM/"//trim(adjustL(dem_file(1:index(dem_file,".txt",.false.)))//"flt"), exist=file_exists)
+  inquire(FILE="./DEM/"//trim(adjustL(filtered_file(1:index(filtered_file,".asc",.false.)))//"asc"), exist=file_exists)
+
+  ! Open DEM file 
+  open(LU_dem,file="./DEM/"//trim(adjustL(dem_file)), status='unknown')    
+  read(LU_dem,'(a5,i20)') dummy, nx_dem
+  read(LU_dem,'(a5,i20)') dummy, ny_dem
+  read(LU_dem,'(a9,f20.5)') dummy,xllcorner
+  read(LU_dem,'(a9,f20.5)') dummy,yllcorner  
+  read(LU_dem,'(a8,f20.5)') dummy,cellsize
+
+  ! Open filtered file 
+  open(LU_flt,file="./DEM/"//trim(adjustL(filtered_file)), status='unknown')    
+  read(LU_flt,'(a5,i20)') dummy, nx_dem_flt
+  read(LU_flt,'(a5,i20)') dummy, ny_dem_flt
+  read(LU_flt,'(a9,f20.5)') dummy,xllcorner_flt
+  read(LU_flt,'(a9,f20.5)') dummy,yllcorner_flt  
+  read(LU_flt,'(a8,f20.5)') dummy,cellsize_flt
+
+  do J=1,ny_dem
+    read(LU_dem,*) (dem_topo(I+x1,J+x2),I=1,nx_dem)
+  enddo
   
-  
-  ! Filter the topography if not already done:
-  if(.not.file_exists) then
-    write(*,*) "File ",trim(adjustL(dem_file(1:index(dem_file,".txt",.false.)))//".flt"), " does not exist"
-    write(*,*) "Performing low-pass filtering using FFT"  
-  
-    ! Open DEM file 
-    open(LU_dem,file="./DEM/"//trim(adjustL(dem_file)), status='unknown')    
-    read(LU_dem,'(a5,i20)') dummy, nx_dem
-    read(LU_dem,'(a5,i20)') dummy, ny_dem
+  do J=1,ny_dem_flt
+    read(LU_flt,*) (flt_topo(I+x1,J+x2),I=1,nx_dem_flt)
+  enddo
 
-    ! To use FFT on a 2D array the dimensions (ny, nx) of the array must be
-    ! integer powers of 2. In Order to satisfy this condition and to avoid wrap
-    ! around effects of filtering we applied zero-padding all around the borders
-    ! of the two dimensional array storing the data. 
-    
-    ! Calculate padding
-    ! Calculate nearest superior power of 2 for each dimension
-    nx = 2**ceiling(log(real(nx_dem,r8))/log(2._r8))
-    ny = 2**ceiling(log(real(ny_dem,r8))/log(2._r8))
+  close(LU_dem)  
+  close(LU_flt)  
 
-    ! Allocate the arrays. This is where the program is going to require a lot
-    ! of memory...depending on the size of the DEM.
-    allocate(dem_topo(nx,ny))
-    allocate(CA(nx,ny))
-    allocate(flt_topo(nx,ny))
+  ! Now we want to save the filtered topography to a direct access file.
+  ! The file will then be used to extract the elevation of the samples.
+  inquire(iolength=r1) flt_topo(1,1)
+  open(72, access="direct", recl=r1,form='unformatted', status='scratch')
 
-    ! Zeros the arrays.
-    dem_topo = 0._r8
-    flt_topo = 0
-
-    ! We need to put the data in the middle part of the 2D array.
-    ! Calulate coordinates of top-left corner from where we will load the dem
-    ! values.
-    x1 = floor((nx - nx_dem) / 2._r8) 
-    x2 = floor((ny - ny_dem) / 2._r8)
-
-    ! Read the header of the dem file.
-    read(LU_dem,'(a9,f20.5)') dummy,xllcorner
-    read(LU_dem,'(a9,f20.5)') dummy,yllcorner  
-    read(LU_dem,'(a8,f20.5)') dummy,cellsize
-    !read(LU_dem,'(a12,f20.5)') dummy,nodata
-
-    do J=1,ny_dem
-      read(LU_dem,*) (dem_topo(I+x1,J+x2),I=1,nx_dem)
-    enddo
-
-    close(LU_dem)  
-
-    ! Convert array to complex
-    CA = CMPLX(dem_topo,0._r4)
-    
-    ! Do forward transform (see subroutine file for calling procedure)
-    if(debug) write(*,*) "Starting Fast Fourier Calculation"
-    allocate(IWK(6*max(nx,ny)+150))
-    allocate(RWK(6*max(nx,ny)+150))
-    allocate(CWK(ny))
-    call FFT3D(CA,nx,ny,nx,ny,1,1,IWK,RWK,CWK)
-    if(debug) write(*,*) "Done"
-
-    ! Apply a low-pass filter to keep wavelength greater than cutwave
-    ! (meters)
-    
-    ! Calculate wave number cut-off
-    ! The FFT divide the sampling frequency into nx index.
-    ! Each index corresponds to a fundamental frequency value. 
-    ! For a sampling frequency of 1/cellsize, the value is 1/(cellsize * nx)
-    ! The index number for a frequency 1/wavecut is (cellsize * nx) / wavecut. 
-    cutlon = ceiling((nx  *  cellsize) / cutwave)
-    cutlat = ceiling((ny  *  cellsize) / cutwave)
-
-
-    do I=cutlon,nx
-      do J=cutlat,ny
-	  CA(I,J)=0
-      enddo  
-    enddo 
-    
-    ! Do reverse fourier transform (see subroutine file for calling procedure)
-    if(debug) write(*,*) "Starting Inverse Fast Fourier Calculation"
-    call FFT3D(CA,nx,ny,nx,ny,1,-1,IWK,RWK,CWK)
-    flt_topo= real(CA)
-    if(debug) write(*,*) "Done"
-
-
-    ! Write a simple ASCII file (Need to be improved to create either a Tiff or
-    ! a BMP)
-
-    open(71, file="./DEM/Filtered_topo.asc", status="unknown")
-
-    write(line,*) "ncols",     nx_dem
-    write(71,'(a)') trim(adjustL(line))
-    write(line,*) "nrows",     ny_dem
-    write(71,'(a)') trim(adjustL(line))
-    write(line,*) "xllcorner", xllcorner
-    write(71,'(a)') trim(adjustL(line))
-    write(line,*) "yllcorner", yllcorner
-    write(71,'(a)') trim(adjustL(line))
-    write(line,*) "cellsize",  cellsize
-    write(71,'(a)') trim(adjustL(line))
-
-    do I = 1 + x2, ny_dem + x2
-      do J = 1 + x1, nx_dem + x1
-       line = " "
-       write(line,'(i5)') flt_topo(J,I)
-       write(71,'(a1,a)',advance='no') " ",trim(adjustL(line))	
-      end do
-      write(71,*)
+  do I = 1, ny_dem
+    do J = 1, nx_dem
+      write(72,rec=((I - 1) * nx_dem + J))  flt_topo(J + x1, I + x2)	
     end do
+  end do
 
-    close(71)
-    ! Create the .prj file
-    ! The coordinate system is identical to the input topography file so
-    ! we just need to copy the information from the topo.prj
-    open(71,file="./DEM/"//trim(adjustL(dem_file(1:index(dem_file,".asc",.false.)))//"prj"),status='old')
-    read(71,'(a)') line
-    close(71)
-    open(71,file="./DEM/Filtered_topo.prj",status="Unknown")
-    write(71,'(a)') trim(adjustL(line))
-    close(71)
-
-    ! Create a tiff file (requires GDAL)
-    ! (Still in developement)
-     xulcorner = xllcorner
-     yulcorner = yllcorner + ny_dem * cellsize
-     ulcorner = (/xulcorner,cellsize, 0., yulcorner, 0., -1 *cellsize/)
-     tiffname = "./DEM/filtered_topo.tiff"
-     UTM_Zone = 33
-
-     call create_tiff(trim(adjustL(tiffname))//C_NULL_CHAR, real(ulcorner,c_double), &
-                      & int(flt_topo(1+x1:nx_dem+x1, 1+x2:ny_dem+x2), c_int),&
-                      & int(nx_dem, c_int), int(ny_dem, c_int), int(UTM_Zone, c_int),&
-                      & "WGS84"//C_NULL_CHAR)
-
-    ! Now we want to save the filtered topography to a direct access file.
-    ! The file will then be used to extract the elevation of the samples.
-    inquire(iolength=r1) flt_topo(1,1)
-    open(72, access="direct", recl=r1,form='unformatted', status='scratch')
-
-    do I = 1, ny_dem
-      do J = 1, nx_dem
-       write(72,rec=((I - 1) * nx_dem + J))  flt_topo(J + x1, I + x2)	
-      end do
+  inquire(iolength=r1) dem_topo(1,1)
+  open(73, access="direct", recl=r1,form='unformatted', status='scratch')
+  do I = 1, ny_dem
+    do J = 1, nx_dem
+      write(73,rec=((I - 1) * nx_dem + J))  dem_topo(J + x1, I + x2)	
     end do
+  end do
 
-    inquire(iolength=r1) dem_topo(1,1)
-    open(73, access="direct", recl=r1,form='unformatted', status='scratch')
-    do I = 1, ny_dem
-      do J = 1, nx_dem
-       write(73,rec=((I - 1) * nx_dem + J))  dem_topo(J + x1, I + x2)	
-      end do
-    end do
 
-  endif
-  
   ! We don't need the array in memory anymore.
   deallocate(dem_topo)
   deallocate(flt_topo)
-  deallocate(CA)
-  deallocate(IWK)
-  deallocate(RWK)
-  deallocate(CWK)
 
 
   ! open sample file list

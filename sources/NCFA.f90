@@ -14,50 +14,38 @@ implicit none
   integer,parameter :: LU_dem=35
   integer,parameter :: LU_flt=36
   integer,parameter :: LU_dummy=37
-  character(len = 150 ) :: input_file
   character(len = 150 ) :: data_file
   character(len = 200 ) :: param_file  
   character(len = 150 ) :: output_file
   character(len = 150 ) :: dem_file
   character(len = 150 ) :: filtered_file
   character(len = 200 ) :: filename
-  character(len = 200 ) :: tiffname
   character(len = 1024) :: line
   character(len = 20  ) :: dummy
   integer :: UTM_PROJECTION_ZONE(2)
   integer :: ndata,icol
-  integer :: i,j,k,io,kk,L,M
+  integer :: i,j,io,kk,L,K,M
   logical :: SUPPRESS_UTM_PROJECTION
   real(kind=r4),allocatable,dimension(:,:) :: distances
   integer,allocatable,dimension(:,:) :: dem_topo,flt_topo
   integer :: nx_dem,ny_dem
   integer :: nx_dem_flt,ny_dem_flt
-  real(kind=r4) :: misfit
   real(kind=r8) :: rlon,rlat,rx,ry
   real(kind=r4)  :: range(2,1024)
   type (database),dimension(:),allocatable :: sample
   integer :: nd
-  integer :: ndt
   integer :: ierr, r1
-  integer :: nodata
   logical :: file_exists
   integer :: x_index,y_index
   integer :: nmaps, ncsamp, ncloc
   real(kind=r4), dimension(:),allocatable :: maps 
-  complex(kind=r4),dimension(:,:),allocatable :: CA
-  complex(kind=r4),dimension(:),allocatable :: CWK
-  real(kind=r4),dimension(:),allocatable :: RWK
-  real(kind=r4),dimension(:),allocatable :: IWK
   real(kind=r4) :: xllcorner,yllcorner,cellsize
   real(kind=r4) :: xllcorner_flt,yllcorner_flt,cellsize_flt
-  real(kind=r4),dimension(:),allocatable :: tspan
   real(kind=r4) :: interp1
   real(kind=r4) :: dt
   real(kind=r4) :: mfitmin
-  real(kind=r4) :: ulcorner(6), yulcorner, xulcorner
   real(kind=r4) :: model_opt(50)
-  real(kind=r4 ) :: cutwave, samp_freq
-  integer :: cutlat, cutlon 
+  real(kind=r4 ) :: cutwave
   integer :: mopt
   integer :: nproc
   integer :: iproc
@@ -75,7 +63,6 @@ implicit none
   integer :: sampleid
   CHARACTER(LEN=100), DIMENSION(200), TARGET :: stringArray
   TYPE(C_PTR), DIMENSION(200) :: stringPtrs
-  integer :: UTM_zone
 
   ! List of variables used by TRIPACK
   integer, dimension(:), allocatable :: LIST, LPTR, LEND, NEAR, NEXT
@@ -796,27 +783,17 @@ subroutine forward(nd,NA_param,misfit)
   use iso_c_binding
 
   implicit none
-  integer :: I,J,n,K,nages,ndistrib,nmtl
+  integer :: I,J,K
   integer,parameter :: NPOINTS=4
   integer :: nd
-  integer :: numPDFPts
-  integer :: kk
   real(kind=r4) :: TIME(4),TEMP(4),ORDERED_TIME_SEQ(4)
   real(kind=r4) :: ftage(500),ftldistrib(500,200),ftldmean(500)  
-  real(kind=r4) :: misfit_ftage,misfit_ftldmean,misfit_ftldistrib,total_misfit_ftldistrib 
   real(kind=r4) :: NA_param(nd)
-  real(kind=r4) :: NA_param_type(nd)
   real(kind=r4) :: misfit
-  real(kind=r4) :: U238_DECAYCT=1.55125E-10
-  real(kind=r4) :: theta
-  real(kind=r4) :: rhosrhoi
-  real(kind=r4) :: LKH_FTGRAIN(NCOUNTMAX)
   real(kind=r4) :: LKH_FTAGE(NSAMPLEMAX)
-  real(kind=r4) :: LKH_TL(NTLMAX)
   real(kind=r4) :: LKH_TLDistrib(NSAMPLEMAX) 
   real(kind=r4) :: LKH_sample(NSAMPLEMAX)
   real(kind=r4) :: total_LKH
-  real(kind=r4) :: pdfAxis(200)
 
   real(kind=c_float) :: ketcham_time(4),ketcham_temp(4)
   real(kind=c_double) :: ketcham_ftage,ketcham_ftldistrib(200),ketcham_ftldmean
@@ -1099,7 +1076,7 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
 
   real (kind=8)  a, b, f, e, e2, e4, e6
   real (kind=8)  phi, lambda, lambda0, phi0, k0
-  real (kind=8)  t, rho, m, x, y, k, mm, mm0
+  real (kind=8)  t, rho, x, y, mm, mm0
   real (kind=8)  aa, aa2, aa3, aa4, aa5, aa6
   real (kind=8)  ep2, nn, tt, cc
 

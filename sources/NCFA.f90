@@ -558,14 +558,14 @@ implicit none
     fwd_NI      = 0_i4
     fwd_TL      = 0._r4
     
-    fwd_ages    = sample(I)%neighbours_ages(1:kk)
-    fwd_ndata   = sample(I)%nneighbours
-    fwd_MTL     = sample(I)%neighbours_MTL(1:kk)
-    fwd_offsets = sample(I)%neighbours_offsets(1:kk)
-    fwd_ncounts = sample(I)%neighbours_ncounts(1:kk)
-    fwd_zeta    = sample(I)%neighbours_zeta(1:kk)
-    fwd_rhodos  = sample(I)%neighbours_rhodos(1:kk)
-    fwd_ntl     = sample(I)%neighbours_ntl(1:kk)
+    fwd_ages(1:kk)    = sample(I)%neighbours_ages(1:kk)
+    fwd_ndata         = sample(I)%nneighbours
+    fwd_MTL(1:kk)     = sample(I)%neighbours_MTL(1:kk)
+    fwd_offsets(1:kk) = sample(I)%neighbours_offsets(1:kk)
+    fwd_ncounts(1:kk) = sample(I)%neighbours_ncounts(1:kk)
+    fwd_zeta(1:kk)    = sample(I)%neighbours_zeta(1:kk)
+    fwd_rhodos(1:kk)  = sample(I)%neighbours_rhodos(1:kk)
+    fwd_ntl(1:kk)     = sample(I)%neighbours_ntl(1:kk)
  
     do J=1,fwd_ndata
 
@@ -836,7 +836,7 @@ subroutine forward(nd,NA_param,misfit)
   call QsortC(ORDERED_TIME_SEQ)
   do I=1,NPOINTS
     if((ORDERED_TIME_SEQ(I)-TIME(I)) /= 0.0_r4) then
-      misfit=1e6
+      misfit=1e22
       goto 333
     endif
   enddo

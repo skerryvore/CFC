@@ -16,7 +16,7 @@ real(kind=r4) :: FTage,FTage_error
 real(kind=r4) :: MTL,MTL_error
 real(kind=r4) :: STDEV,STDEV_error
 integer :: NS(100),NI(100)
-real(kind=r4) :: TL(200)
+real(kind=r4) :: TL(400)
 character :: sample_name*50
 character :: input_file*200
 

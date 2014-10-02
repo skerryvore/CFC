@@ -39,7 +39,7 @@ module CFC
     real(kind=r4) :: stdev_err
     integer :: NS(100)
     integer :: NI(100)
-    real(kind=r4) :: TL(200)
+    real(kind=r4) :: TL(400)
     integer :: neighbours(500) 
     integer :: nneighbours
     real(kind=r4) :: neighbours_ages(500)
@@ -53,7 +53,7 @@ module CFC
     integer       :: neighbours_NI(500,100)
     real(kind=r4) :: neighbours_MTL(500)
     real(kind=r4) :: neighbours_MTL_err(500)
-    real(kind=r4) :: neighbours_TL(500,200)
+    real(kind=r4) :: neighbours_TL(500,400)
     real(kind=r4) :: neighbours_FTLD(500,17)
     real(kind=r4) :: bestgeotherm
     real(kind=r4) :: bestmod_geotherm
@@ -82,7 +82,7 @@ module fwd
 use precision_kind
 integer,parameter :: NSAMPLEMAX=100
 integer,parameter :: NCOUNTMAX=100
-integer,parameter :: NTLMAX=200
+integer,parameter :: NTLMAX=400
 real(kind=r4)  :: fwd_offsets(NSAMPLEMAX)
 integer  :: fwd_ndata
 integer  :: fwd_NS(NSAMPLEMAX,NCOUNTMAX)

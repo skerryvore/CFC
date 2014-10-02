@@ -9,9 +9,9 @@ South-Africa_out.txt
 ! cutoff wavelenght
 100000
 ! CIRCLE DEF 1:RADIUS, 2:NCLOSEST, 3:VORONOI
-1
+3
 ! Radius of the circle (in km)
-25
+! 25
 ! Name of the DEM file, note that the program is going to check if a highpass topography file exist
 ! file_name.flt, if not the file will be created and the calculation could take time
 ! My advice would be to filter the topography using a dedicated GIS software such as GRASS.
@@ -27,9 +27,8 @@ Namibia_lowres_filtered.asc
 !
 5.
 ! Number of output map
-11
+10
 ! Output at time (Ma BP):
-0
 10
 20
 30

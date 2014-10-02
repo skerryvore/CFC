@@ -27,7 +27,6 @@ implicit none
   integer :: UTM_PROJECTION_ZONE(2)
   integer :: ndata,icol
   integer :: i,j,k,io,kk,L,M
-  integer :: x1, x2, ny, nx
   logical :: SUPPRESS_UTM_PROJECTION
   real(kind=r4),allocatable,dimension(:,:) :: distances
   integer,allocatable,dimension(:,:) :: dem_topo,flt_topo
@@ -121,7 +120,7 @@ implicit none
 
   interface
     subroutine createDBF(dbffilename, id, nsamp, sampx, sampy, sampz, sampname &
-	&, temp, ERate, Geo, ExRate, Ftage) bind(C, name="createDBF")
+                   &, temp, ERate, Geo, ExRate, Ftage) bind(C, name="createDBF")
       use iso_c_binding
       character(kind=c_char), dimension(*) :: dbffilename
       integer(kind=c_int), value :: nsamp
@@ -191,8 +190,12 @@ implicit none
 
   circle=circle*1000 ! Convert to m 
 
+  ! Check if a topography file exists:
+  inquire(FILE="./DEM/"//trim(adjustL(dem_file(1:index(dem_file,".asc",.false.)))//"asc"), exist=file_exists)
+  if(.not.file_exists) STOP "No input Topography"
   ! Check if a filtered topography file exists:
   inquire(FILE="./DEM/"//trim(adjustL(filtered_file(1:index(filtered_file,".asc",.false.)))//"asc"), exist=file_exists)
+  if(.not.file_exists) STOP "No input filtered Topography"
 
   ! Open DEM file 
   open(LU_dem,file="./DEM/"//trim(adjustL(dem_file)), status='unknown')    
@@ -210,12 +213,23 @@ implicit none
   read(LU_flt,'(a9,f20.5)') dummy,yllcorner_flt  
   read(LU_flt,'(a8,f20.5)') dummy,cellsize_flt
 
+  ! Check that the dimension and coordinates of the ll corner are identical.
+  if(nx_dem.ne.nx_dem_flt) STOP "NX dimensions do not match"
+  if(ny_dem.ne.ny_dem_flt) STOP "NY dimensions do not match"
+  if(xllcorner.ne.xllcorner_flt) STOP "X coordinate of lower left corners do not match"
+  if(yllcorner.ne.yllcorner_flt) STOP "Y coordinate of lower left corners do not match"
+  if(cellsize.ne.cellsize_flt) STOP "Cellsizes do not match"
+
+  ! Allocate array
+  allocate(dem_topo(nx_dem, ny_dem))
+  allocate(flt_topo(nx_dem, ny_dem))
+
   do J=1,ny_dem
-    read(LU_dem,*) (dem_topo(I+x1,J+x2),I=1,nx_dem)
+    read(LU_dem,*) (dem_topo(I,J),I=1,nx_dem)
   enddo
   
-  do J=1,ny_dem_flt
-    read(LU_flt,*) (flt_topo(I+x1,J+x2),I=1,nx_dem_flt)
+  do J=1,ny_dem
+    read(LU_flt,*) (flt_topo(I,J),I=1,nx_dem)
   enddo
 
   close(LU_dem)  
@@ -228,7 +242,7 @@ implicit none
 
   do I = 1, ny_dem
     do J = 1, nx_dem
-      write(72,rec=((I - 1) * nx_dem + J))  flt_topo(J + x1, I + x2)	
+      write(72,rec=((I - 1) * nx_dem + J))  flt_topo(J, I)
     end do
   end do
 
@@ -236,7 +250,7 @@ implicit none
   open(73, access="direct", recl=r1,form='unformatted', status='scratch')
   do I = 1, ny_dem
     do J = 1, nx_dem
-      write(73,rec=((I - 1) * nx_dem + J))  dem_topo(J + x1, I + x2)	
+      write(73,rec=((I - 1) * nx_dem + J))  dem_topo(J, I)
     end do
   end do
 
@@ -369,32 +383,32 @@ implicit none
 
     case(RADIUS)
       do J = 1,ndata
-	if(distances(I,J).lt.circle) then
-	  sample(I)%nneighbours = sample(I)%nneighbours + 1
-	  kk = sample(I)%nneighbours
-	  sample(I)%neighbours(kk)         = J
-	  sample(I)%neighbours_ncounts(kk) = sample(J)%ncounts
-	  sample(I)%neighbours_zeta(kk)    = sample(J)%zeta
-	  sample(I)%neighbours_rhodos(kk)  = sample(J)%rhod
+        if(distances(I,J).lt.circle) then
+          sample(I)%nneighbours = sample(I)%nneighbours + 1
+          kk = sample(I)%nneighbours
+          sample(I)%neighbours(kk)         = J
+          sample(I)%neighbours_ncounts(kk) = sample(J)%ncounts
+          sample(I)%neighbours_zeta(kk)    = sample(J)%zeta
+          sample(I)%neighbours_rhodos(kk)  = sample(J)%rhod
 
-	  do K=1, sample(J)%ncounts
-	    sample(I)%neighbours_NS(kk,K) = sample(J)%NS(K)
-	    sample(I)%neighbours_NI(kk,K) = sample(J)%NI(K)       
-	  enddo 
+          do K=1, sample(J)%ncounts
+            sample(I)%neighbours_NS(kk,K) = sample(J)%NS(K)
+            sample(I)%neighbours_NI(kk,K) = sample(J)%NI(K)       
+          enddo 
 
-	  sample(I)%neighbours_ages(kk)     = sample(J)%FTage
-	  sample(I)%neighbours_ages_err(kk) = sample(J)%FTage_err
-	  sample(I)%neighbours_ntl(kk)      = sample(J)%ntl
+          sample(I)%neighbours_ages(kk)     = sample(J)%FTage
+          sample(I)%neighbours_ages_err(kk) = sample(J)%FTage_err
+          sample(I)%neighbours_ntl(kk)      = sample(J)%ntl
 
-	  do K=1, sample(J)%ntl
-	    sample(I)%neighbours_TL(kk,K) = sample(J)%TL(K)
-	  enddo
+          do K=1, sample(J)%ntl
+            sample(I)%neighbours_TL(kk,K) = sample(J)%TL(K)
+          enddo
 
-	  sample(I)%neighbours_MTL(kk)     = sample(J)%MTL
-	  sample(I)%neighbours_MTL_err(kk) = sample(J)%MTL_err
-	  sample(I)%neighbours_offsets(kk) = sample(J)%z-sample(J)%flt_elevation
-	  sample(I)%neighbours_offsets(kk) = 0._r4
-	endif
+          sample(I)%neighbours_MTL(kk)     = sample(J)%MTL
+          sample(I)%neighbours_MTL_err(kk) = sample(J)%MTL_err
+          sample(I)%neighbours_offsets(kk) = sample(J)%z-sample(J)%flt_elevation
+          sample(I)%neighbours_offsets(kk) = 0._r4
+        endif
       end do
 
     case(NCLOSEST)
@@ -410,42 +424,42 @@ implicit none
       K = 1
       ncsamp = 1
       do while(ncsamp.ne.ncloc)
-	BOREHOLE = .FALSE.
-	if(K.gt.1) BOREHOLE = (sample(idx(K))%lat.eq.sample(idx(K-1))%lat.and.&
-	  & sample(idx(K))%lon.eq.sample(idx(K-1))%lon)
+        BOREHOLE = .FALSE.
+        if(K.gt.1) BOREHOLE = (sample(idx(K))%lat.eq.sample(idx(K-1))%lat.and.&
+          & sample(idx(K))%lon.eq.sample(idx(K-1))%lon)
 
-	sample(I)%nneighbours = sample(I)%nneighbours + 1
+        sample(I)%nneighbours = sample(I)%nneighbours + 1
 
-	kk = sample(I)%nneighbours
-	sample(I)%neighbours(kk)         = idx(K)
-	print*, idx(k)
-	sample(I)%neighbours_ncounts(kk) = sample(idx(K))%ncounts
-	sample(I)%neighbours_zeta(kk)    = sample(idx(K))%zeta
-	sample(I)%neighbours_rhodos(kk)  = sample(idx(K))%rhod
+        kk = sample(I)%nneighbours
+        sample(I)%neighbours(kk)         = idx(K)
+        print*, idx(k)
+        sample(I)%neighbours_ncounts(kk) = sample(idx(K))%ncounts
+        sample(I)%neighbours_zeta(kk)    = sample(idx(K))%zeta
+        sample(I)%neighbours_rhodos(kk)  = sample(idx(K))%rhod
 
-	do L=1, sample(J)%ncounts
-	  sample(I)%neighbours_NS(kk,L) = sample(idx(K))%NS(L)
-	  sample(I)%neighbours_NI(kk,L) = sample(idx(K))%NI(L)       
-	enddo 
+        do L=1, sample(J)%ncounts
+          sample(I)%neighbours_NS(kk,L) = sample(idx(K))%NS(L)
+          sample(I)%neighbours_NI(kk,L) = sample(idx(K))%NI(L)       
+        enddo 
 
-	sample(I)%neighbours_ages(kk)     = sample(idx(K))%FTage
-	sample(I)%neighbours_ages_err(kk) = sample(idx(K))%FTage_err
-	sample(I)%neighbours_ntl(kk)      = sample(idx(K))%ntl
+        sample(I)%neighbours_ages(kk)     = sample(idx(K))%FTage
+        sample(I)%neighbours_ages_err(kk) = sample(idx(K))%FTage_err
+        sample(I)%neighbours_ntl(kk)      = sample(idx(K))%ntl
+        
+        do L=1, sample(J)%ntl
+          sample(I)%neighbours_TL(kk,L) = sample(idx(K))%TL(L)
+        enddo
 
-	do L=1, sample(J)%ntl
-	  sample(I)%neighbours_TL(kk,L) = sample(idx(K))%TL(L)
-	enddo
+        sample(I)%neighbours_MTL(kk)     = sample(idx(K))%MTL
+        sample(I)%neighbours_MTL_err(kk) = sample(idx(K))%MTL_err
+        sample(I)%neighbours_offsets(kk) = sample(idx(K))%z-sample(idx(K))%flt_elevation
+        sample(I)%neighbours_offsets(kk) = 0._r4
 
-	sample(I)%neighbours_MTL(kk)     = sample(idx(K))%MTL
-	sample(I)%neighbours_MTL_err(kk) = sample(idx(K))%MTL_err
-	sample(I)%neighbours_offsets(kk) = sample(idx(K))%z-sample(idx(K))%flt_elevation
-	sample(I)%neighbours_offsets(kk) = 0._r4
+        if(.not.BOREHOLE) ncsamp = ncsamp + 1
+        K = K + 1
 
-	if(.not.BOREHOLE) ncsamp = ncsamp + 1
-	K = K + 1
-
-	deallocate(sorted_distances)
-	deallocate(idx)
+        deallocate(sorted_distances)
+        deallocate(idx)
       end do
 
     end select
@@ -488,28 +502,28 @@ implicit none
 
       do L=1, kk 
 
-	J = sample(I)%neighbours(L) 
-	sample(I)%neighbours_ncounts(L) = sample(J)%ncounts
-	sample(I)%neighbours_zeta(L)    = sample(J)%zeta
-	sample(I)%neighbours_rhodos(L)  = sample(J)%rhod
+        J = sample(I)%neighbours(L) 
+        sample(I)%neighbours_ncounts(L) = sample(J)%ncounts
+        sample(I)%neighbours_zeta(L)    = sample(J)%zeta
+        sample(I)%neighbours_rhodos(L)  = sample(J)%rhod
 
-	do K=1, sample(J)%ncounts
-	  sample(I)%neighbours_NS(L,K) = sample(J)%NS(K)
-	  sample(I)%neighbours_NI(L,K) = sample(J)%NI(K)       
-	enddo 
+        do K=1, sample(J)%ncounts
+          sample(I)%neighbours_NS(L,K) = sample(J)%NS(K)
+          sample(I)%neighbours_NI(L,K) = sample(J)%NI(K)       
+        enddo 
 
-	sample(I)%neighbours_ages(L)     = sample(J)%FTage
-	sample(I)%neighbours_ages_err(L) = sample(J)%FTage_err
-	sample(I)%neighbours_ntl(L)      = sample(J)%ntl
+        sample(I)%neighbours_ages(L)     = sample(J)%FTage
+        sample(I)%neighbours_ages_err(L) = sample(J)%FTage_err
+        sample(I)%neighbours_ntl(L)      = sample(J)%ntl
 
-	do K=1, sample(J)%ntl
-	  sample(I)%neighbours_TL(L,K) = sample(J)%TL(K)
-	enddo
+        do K=1, sample(J)%ntl
+          sample(I)%neighbours_TL(L,K) = sample(J)%TL(K)
+        enddo
 
-	sample(I)%neighbours_MTL(L)     = sample(J)%MTL
-	sample(I)%neighbours_MTL_err(L) = sample(J)%MTL_err
-	sample(I)%neighbours_offsets(L) = sample(J)%z-sample(J)%flt_elevation
-	sample(I)%neighbours_offsets(L) = 0._r4
+        sample(I)%neighbours_MTL(L)     = sample(J)%MTL
+        sample(I)%neighbours_MTL_err(L) = sample(J)%MTL_err
+        sample(I)%neighbours_offsets(L) = sample(J)%z-sample(J)%flt_elevation
+        sample(I)%neighbours_offsets(L) = 0._r4
       end do
 
     end do
@@ -626,42 +640,42 @@ implicit none
 
     do J = 1,ndata
       do K = 1,sample(J)%nneighbours
-	if(sample(J)%neighbours(K) .eq. I) then
+        if(sample(J)%neighbours(K) .eq. I) then
 
-	  L = 1
-	  do M = ttpoints,1,-1
-	    ktime(M) = abs(sample(J)%bestpath(1,L) - sample(J)%bestpath(1,ttpoints))
-	    ktemp(M) = sample(J)%bestpath(2,L) + sample(J)%neighbours_offsets(K) * sample(J)%bestgeotherm
-	    L = L + 1
-	  end do
+          L = 1
+          do M = ttpoints,1,-1
+            ktime(M) = abs(sample(J)%bestpath(1,L) - sample(J)%bestpath(1,ttpoints))
+            ktemp(M) = sample(J)%bestpath(2,L) + sample(J)%neighbours_offsets(K) * sample(J)%bestgeotherm
+            L = L + 1
+          end do
 
-	  call ketch_main(int(ttpoints,c_int),ktime,ktemp,alo,kAFTA,kOld,kMTL,kFTLD)
+          call ketch_main(int(ttpoints,c_int),ktime,ktemp,alo,kAFTA,kOld,kMTL,kFTLD)
 
-	  AFTA = real(kAFTA,r4)
-	  FTLD = real(kFTLD,r4)
-	  MTL  = real(kMTL, r4)
+          AFTA = real(kAFTA,r4)
+          FTLD = real(kFTLD,r4)
+          MTL  = real(kMTL, r4)
 
-	  ! Calculate the Log-likelihood
-	  call loglike_FT(AFTA, MTL, sample(I)%zeta, sample(I)%rhod, sample(I)%NS,&
-	                 & sample(I)%NI, sample(I)%NCOUNTS, llFT)
-	  call loglike_TL(200, sample(I)%NTL, sample(I)%TL, FTLD, llTL)
+          ! Calculate the Log-likelihood
+          call loglike_FT(AFTA, MTL, sample(I)%zeta, sample(I)%rhod, sample(I)%NS,&
+                         & sample(I)%NI, sample(I)%NCOUNTS, llFT)
+          call loglike_TL(200, sample(I)%NTL, sample(I)%TL, FTLD, llTL)
 
-	  LKH = llFT + llTL
+          LKH = llFT + llTL
 
-	  ! If the log-likelihood is greater than the previous history
-	  ! Store the history and record the misfit
+          ! If the log-likelihood is greater than the previous history
+          ! Store the history and record the misfit
 
-	  if (LKH.lt.sample(I)%optimum_LKH.or.FIRST_PATH) then
-            FIRST_PATH = .FALSE.	    
-	    sample(I)%optimum_LKH = LKH
-	    sample(I)%optimum_path(1,:) = sample(J)%bestpath(1,:)
-	    sample(I)%optimum_path(2,:) = sample(J)%bestpath(2,:)
-	    sample(I)%optimum_geotherm  = sample(J)%bestgeotherm
-	    sample(I)%family            = 0
-	    sample(I)%family            = sample(J)%neighbours
-	    sample(I)%nfamily           = sample(J)%nneighbours
-	  end if
-	endif
+          if (LKH.lt.sample(I)%optimum_LKH.or.FIRST_PATH) then
+            FIRST_PATH = .FALSE.            
+            sample(I)%optimum_LKH = LKH
+            sample(I)%optimum_path(1,:) = sample(J)%bestpath(1,:)
+            sample(I)%optimum_path(2,:) = sample(J)%bestpath(2,:)
+            sample(I)%optimum_geotherm  = sample(J)%bestgeotherm
+            sample(I)%family            = 0
+            sample(I)%family            = sample(J)%neighbours
+            sample(I)%nfamily           = sample(J)%nneighbours
+          end if
+        endif
       enddo
     enddo
   enddo
@@ -712,7 +726,7 @@ implicit none
     write(71,*) "X Y Temp E dT/dz dz/dt"
     do I = 1, ndata
       write(71,'(2f15.2, 4f5.2)') sample(I)%x, sample(I)%y, sample(I)%temp_rec(J),sample(I)%Erate_rec(J), &
-	& sample(I)%optimum_geotherm, sample(I)%Erate_rec(J) / sample(I)%optimum_geotherm	
+        & sample(I)%optimum_geotherm, sample(I)%Erate_rec(J) / sample(I)%optimum_geotherm
     end do
     close(71)
   end do
@@ -870,7 +884,7 @@ subroutine forward(nd,NA_param,misfit)
 
     if(fwd_ncounts(K).ne.0) then
       call loglike_FT(ftage(K), ftldmean(K), fwd_zeta(K), fwd_rhodos(K),&
-	&  fwd_ns(K,:), fwd_ni(K,:), fwd_ncounts(K), LKH_FTAGE(K))
+         &  fwd_ns(K,:), fwd_ni(K,:), fwd_ncounts(K), LKH_FTAGE(K))
     endif
 
     if(fwd_ntl(K).ne.0) then
@@ -1090,7 +1104,6 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
   real (kind=8)  ep2, nn, tt, cc
 
   real (kind=8) M_PI
-  !!!   parameter (M_PI = 3.141592654)
 
   integer CLARKE_1866_DATUM
   parameter (CLARKE_1866_DATUM = 1)
@@ -1219,7 +1232,7 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
     cc = ep2 * cos (phi) * cos (phi)
 
     !!! Not needed (dhg) k = k0 * (1 + (1+cc)*aa2/2 + (5-4*tt+42*cc+13*cc*cc-28*ep2) * aa4 / 24.0 + &
-    !!! Not needed (dhg) 	     (61-148*tt+16*tt*tt) * aa6 / 720.0)
+    !!! Not needed (dhg)          (61-148*tt+16*tt*tt) * aa6 / 720.0)
     x = k0 * nn * (aa + (1-tt+cc) * aa3 / 6 + &
       (5-18*tt+tt*tt+72*cc-58*ep2) * aa5 / 120.0)
     y = k0 * (mm - mm0 + nn * tan (phi) * &
@@ -1335,13 +1348,13 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
 
       chi = M_PI_2 - 2 * atan (t)
       phit = chi + (e2/2 + 5*e4/24 + e6/12 + 13*e8/360) * sin(2*chi) + &
-	(7*e4/48 + 29*e6/240 + 811*e8/11520) * sin(4*chi) + &
-	(7*e6/120 + 81*e8/1120) * sin(6*chi) + &
-	(4279*e8/161280) * sin(8*chi)
+        (7*e4/48 + 29*e6/240 + 811*e8/11520) * sin(4*chi) + &
+        (7*e6/120 + 81*e8/1120) * sin(6*chi) + &
+        (4279*e8/161280) * sin(8*chi)
 
       do while (ABS (phi-phit) .GT. LOWER_EPS_LIMIT)
-	phi = phit
-	phit = M_PI_2 - 2 * atan ( t * (((1 - e * sin (phi)) / (1 + e * sin (phi))) ** (e / 2)) )
+        phi = phit
+        phit = M_PI_2 - 2 * atan ( t * (((1 - e * sin (phi)) / (1 + e * sin (phi))) ** (e / 2)) )
       enddo
 
       lambda = lambda0 + atan2 (x, -y)
@@ -1363,13 +1376,13 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
 
       chi = M_PI_2 - 2 * atan (t)
       phit = chi + (e2/2 + 5*e4/24 + e6/12 + 13*e8/360) * sin (2*chi) + &
-	(7*e4/48 + 29*e6/240 + 811*e8/11520) * sin (4*chi) + &
-	(7*e6/120 + 81*e8/1120) * sin (6*chi) + &
-	(4279*e8/161280) * sin (8*chi)
+        (7*e4/48 + 29*e6/240 + 811*e8/11520) * sin (4*chi) + &
+        (7*e6/120 + 81*e8/1120) * sin (6*chi) + &
+        (4279*e8/161280) * sin (8*chi)
 
       do while (ABS (phi-phit) .GT. LOWER_EPS_LIMIT)
-	phi = phit;
-	phit = M_PI_2 - 2 * atan (t * ( ((1-e*sin(phi)) / (1+e*sin(phi)) ) ** (e/2)))
+        phi = phit;
+        phit = M_PI_2 - 2 * atan (t * ( ((1-e*sin(phi)) / (1+e*sin(phi)) ) ** (e/2)))
       enddo
 
       phi = -phi
@@ -1387,7 +1400,7 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
       y = utm_y
 
       if (latitude .LT. 0.0) then  !/* southern hemisphere */
-	y = y - 10000000.0
+        y = y - 10000000.0
       endif
 
       !/* Calculate the footpoint latitude */
@@ -1399,16 +1412,16 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
       e14 = e12 * e12
 
       mm0 = a * ((1.0-e2/4.0 - 3.0*e4/64.0 - 5.0*e6/256.0) * phi0 - &
-	(3.0*e2/8.0 + 3.0*e4/32.0 + 45.0*e6/1024.0) * sin (2.0*phi0) + &
-	(15.0*e4/256.0 + 45.0*e6/1024.0) * sin (4.0*phi0) - &
-	(35.0*e6/3072.0) * sin (6.0*phi0))
+        (3.0*e2/8.0 + 3.0*e4/32.0 + 45.0*e6/1024.0) * sin (2.0*phi0) + &
+        (15.0*e4/256.0 + 45.0*e6/1024.0) * sin (4.0*phi0) - &
+        (35.0*e6/3072.0) * sin (6.0*phi0))
       mm = mm0 + y/k0;
       mu = mm / (a * (1.0-e2/4.0-3.0*e4/64.0-5.0*e6/256.0))
 
       phi1 = mu + (3.0*e1/2.0 - 27.0*e13/32.0) * sin (2.0*mu) + &
-	(21.0*e12/16.0 - 55.0*e14/32.0) * sin (4.0*mu) + &
-	(151.0*e13/96.0) * sin (6.0*mu) + &
-	(1097.0*e14/512.0) * sin (8.0*mu)
+        (21.0*e12/16.0 - 55.0*e14/32.0) * sin (4.0*mu) + &
+        (151.0*e13/96.0) * sin (6.0*mu) + &
+        (1097.0*e14/512.0) * sin (8.0*mu)
 
       !/* Now calculate lambda and phi */
 
@@ -1428,11 +1441,11 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
       dd6 = dd4 * dd2
 
       phi = phi1 - (nn1 * tan (phi1) / rr1) * &
-	(dd2/2.0 - (5.0+3.0*tt1+10.0*cc1-4.0*cc1*cc1-9.0*ep2) * dd4 / 24.0 + &
-	(61.0+90.0*tt1+298.0*cc1+45.0*tt1*tt1-252.0*ep2-3.0*cc1*cc1) * dd6 / 720.0)
+        (dd2/2.0 - (5.0+3.0*tt1+10.0*cc1-4.0*cc1*cc1-9.0*ep2) * dd4 / 24.0 + &
+        (61.0+90.0*tt1+298.0*cc1+45.0*tt1*tt1-252.0*ep2-3.0*cc1*cc1) * dd6 / 720.0)
       lambda = lambda0 + &
-	(dd - (1.0+2.0*tt1+cc1) * dd3 / 6.0 + &
-	(5.0-2.0*cc1+28.0*tt1-3.0*cc1*cc1+8.0*ep2+24.0*tt1*tt1) * dd5 / 120.0) / cos (phi1)
+        (dd - (1.0+2.0*tt1+cc1) * dd3 / 6.0 + &
+        (5.0-2.0*cc1+28.0*tt1-3.0*cc1*cc1+8.0*ep2+24.0*tt1*tt1) * dd5 / 120.0) / cos (phi1)
     endif
 
     !/* Convert phi/lambda to degrees */
@@ -1462,18 +1475,18 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
       open (U2,status='scratch')
       1 read (U1,FMT1,end=2) line
       if (line(1:1).ne.char.and. line(1:1).ne.' ') then
-	if (scan(line,char).ne.0) then
-	  do i=scan(line,char),1024
-	    line(i:i)=' '
-	  enddo
-	endif
-	k=1
-	do j=1,1024
-	  if (line(j:j).eq.' '.or.line(j:j).eq.',') then
-	    if (j.ne.k) write (U2,'(a)') line(k:j-1)
-	    k=j+1
-	  endif
-	enddo
+        if (scan(line,char).ne.0) then
+          do i=scan(line,char),1024
+            line(i:i)=' '
+          enddo
+        endif
+        k=1
+        do j=1,1024
+          if (line(j:j).eq.' '.or.line(j:j).eq.',') then
+            if (j.ne.k) write (U2,'(a)') line(k:j-1)
+            k=j+1
+          endif
+        enddo
       endif
       goto 1
       2 close (U1)
@@ -1502,7 +1515,7 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
 
       I=2
       do while(xi.gt.x(I))
-	I=I+1
+        I=I+1
       enddo
 
       interp1=(Y(I-1)*(x(I)-xi)+Y(I)*(xi-x(I-1)))/(x(I)-x(I-1))
@@ -1528,7 +1541,7 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
 
     !---------------------------------------------------------------------------------------------------
     subroutine writemodels (nd,ntot,models,misfit,ns1,ns2,itmax, &
-	nh_max,nh,header)
+      nh_max,nh,header)
 
       use precision_kind
       use fwd
@@ -1553,7 +1566,7 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
       write(tempo,'(i5)') model_id
       open (87,file='./results/'//trim(adjustL(run_name))//'/NA_results_sample'//trim(adjustL(tempo))//'.txt',status='unknown')
       do i=1,ntot
-	write (87,*) misfit(i),(models(k,i),k=1,nd)
+        write (87,*) misfit(i),(models(k,i),k=1,nd)
       enddo
       close (87)
 
@@ -1594,7 +1607,7 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
       ! 3) Calculate log-likelihood using count data
       lkh = 0._r4
       do j = 1, nc
-	lkh = lkh + ns(j) * log(theta) + ni(j) * log(1 - theta)	
+        lkh = lkh + ns(j) * log(theta) + ni(j) * log(1 - theta)
       end do
 
     end subroutine loglike_FT  
@@ -1614,14 +1627,14 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
       real(kind = r4) :: pdfx(nx) 
 
       do i = 1, nx
-	pdfx(i) = (i-1) * 0.1_r4	
+        pdfx(i) = (i-1) * 0.1_r4
       end do
 
       lkh = 0._r4
 
       do i = 1, ntl
-	j = locate(pdfx, tl(i))
-	lkh = lkh + log(ftld(j) / 100.0)
+        j = locate(pdfx, tl(i))
+        lkh = lkh + log(ftld(j) / 100.0)
       end do
 
 
@@ -1629,40 +1642,40 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
 
 
       function locate(xx,x)
-	use precision_kind
-	implicit none
+        use precision_kind
+        implicit none
 
-	real(kind=r4),dimension(:),intent(in) :: xx
-	real(kind=r4),intent(in) :: x
-	integer :: locate
+        real(kind=r4),dimension(:),intent(in) :: xx
+        real(kind=r4),intent(in) :: x
+        integer :: locate
 
-	! Given an array xx(1:N), and given a value x, returns a value j such that x is between
-	! xx(j) and xx(j + 1). xx must be monotonic, either increasing or decreasing. j = 0 or
-	! j = N is returned to indicate that x is out of range.
+        ! Given an array xx(1:N), and given a value x, returns a value j such that x is between
+        ! xx(j) and xx(j + 1). xx must be monotonic, either increasing or decreasing. j = 0 or
+        ! j = N is returned to indicate that x is out of range.
 
-	integer :: n,jl,jm,Ju
-	logical :: ascnd
+        integer :: n,jl,jm,Ju
+        logical :: ascnd
 
-	n=size(xx)
-	ascnd = (xx(n) >= xx(1)) ! True if ascending order of table, false otherwise.
-	jl=0                     ! Initialize Lower limit.
-	ju=n+1                   ! Initialize upper limit.
-	do
-	  if(ju-jl <= 1) exit ! Repeat until this condition is satisfied
-	  jm=(ju+jl)/2 ! compute a midpoint
-	  if(ascnd .eqv. (x >= xx(jm))) then
-	    jl=jm  
-	  else
-	    ju=jm
-	  endif
-	enddo
-	if(x == xx(1)) then
-	  locate=1
-	else if (x == xx(n)) then
-	  locate=n-1
-	else
-	  locate=jl
-	endif
+        n=size(xx)
+        ascnd = (xx(n) >= xx(1)) ! True if ascending order of table, false otherwise.
+        jl=0                     ! Initialize Lower limit.
+        ju=n+1                   ! Initialize upper limit.
+        do
+          if(ju-jl <= 1) exit ! Repeat until this condition is satisfied
+          jm=(ju+jl)/2 ! compute a midpoint
+          if(ascnd .eqv. (x >= xx(jm))) then
+            jl=jm  
+          else
+            ju=jm
+          endif
+        enddo
+        if(x == xx(1)) then
+          locate=1
+        else if (x == xx(n)) then
+          locate=n-1
+        else
+          locate=jl
+        endif
       end function locate
 
 

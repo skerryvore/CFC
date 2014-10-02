@@ -44,7 +44,7 @@ module CFC
     integer :: nneighbours
     real(kind=r4) :: neighbours_ages(500)
     real(kind=r4) :: neighbours_ages_err(500)
-    integer       :: neighbours_offsets(500)
+    real(kind=r4) :: neighbours_offsets(500)
     integer       :: neighbours_ncounts(500)
     integer       :: neighbours_ntl(500)
     real(kind=r4) :: neighbours_zeta(500)
@@ -83,7 +83,7 @@ use precision_kind
 integer,parameter :: NSAMPLEMAX=100
 integer,parameter :: NCOUNTMAX=100
 integer,parameter :: NTLMAX=200
-integer  :: fwd_offsets(NSAMPLEMAX)
+real(kind=r4)  :: fwd_offsets(NSAMPLEMAX)
 integer  :: fwd_ndata
 integer  :: fwd_NS(NSAMPLEMAX,NCOUNTMAX)
 integer  :: fwd_NI(NSAMPLEMAX,NCOUNTMAX)
@@ -201,13 +201,13 @@ SUBROUTINE indexx(arr,index)
   do
     if (r-l < NN) then
       do j=l+1,r
-	indext=index(j)
-	a=arr(indext)
-	do i=j-1,l,-1
-	  if (arr(index(i)) <= a) exit
-	  index(i+1)=index(i)
-	end do
-	index(i+1)=indext
+        indext=index(j)
+        a=arr(indext)
+        do i=j-1,l,-1
+          if (arr(index(i)) <= a) exit
+          index(i+1)=index(i)
+        end do
+        index(i+1)=indext
       end do
       if (jstack == 0) RETURN
       r=istack(jstack)
@@ -224,66 +224,67 @@ SUBROUTINE indexx(arr,index)
       indext=index(l+1)
       a=arr(indext)
       do
-	do
-	  i=i+1
-	  if (arr(index(i)) >= a) exit
-	end do
-	do
-	  j=j-1
-	  if (arr(index(j)) <= a) exit
-	end do
-	if (j < i) exit
-	call swap(index(i),index(j))
+        do
+          i=i+1
+          if (arr(index(i)) >= a) exit
+        end do
+        do
+          j=j-1
+          if (arr(index(j)) <= a) exit
+        end do
+        if (j < i) exit
+        call swap(index(i),index(j))
       end do
       index(l+1)=index(j)
       index(j)=indext
       jstack=jstack+2
       if (jstack > NSTACK) call nrerror('indexx: NSTACK too small')
       if (r-i+1 >= j-l) then
-	istack(jstack)=r
-	istack(jstack-1)=i
-	r=j-1
+        istack(jstack)=r
+        istack(jstack-1)=i
+        r=j-1
       else
-	istack(jstack)=j-1
-	istack(jstack-1)=l
-	l=i
+        istack(jstack)=j-1
+        istack(jstack-1)=l
+        l=i
       end if
     end if
   end do
 
 CONTAINS
 
-  SUBROUTINE icomp_xchg(i,j)
-    INTEGER(I4B), INTENT(INOUT) :: i,j
-    INTEGER(I4B) :: swp
-    if (arr(j) < arr(i)) then
-      swp=i
-      i=j
-      j=swp
-    end if
-  END SUBROUTINE icomp_xchg
+SUBROUTINE icomp_xchg(i,j)
+  INTEGER(I4B), INTENT(INOUT) :: i,j
+  INTEGER(I4B) :: swp
+  if (arr(j) < arr(i)) then
+    swp=i
+    i=j
+    j=swp
+  end if
+END SUBROUTINE icomp_xchg
 
 END SUBROUTINE indexx
 
 FUNCTION arth(first,increment,n)
   INTEGER(I4B), INTENT(IN) :: first,increment,n
-  INTEGER(I4B), DIMENSION(n) :: arth_i
+  INTEGER(I4B), DIMENSION(n) :: arth
   INTEGER(I4B) :: k,k2,temp
-  if (n > 0) arth_i(1)=first
+  INTEGER(I4B),PARAMETER :: NPAR_ARTH=16, NPAR2_ARTH=8
+  if (n > 0) arth(1)=first
   if (n <= NPAR_ARTH) then
     do k=2,n
-      arth_i(k)=arth_i(k-1)+increment
+      arth(k)=arth(k-1)+increment
     end do
   else
     do k=2,NPAR2_ARTH
-      arth_i(k)=arth_i(k-1)+increment
+      arth(k)=arth(k-1)+increment
     end do
     temp=increment*NPAR2_ARTH
     k=NPAR2_ARTH
     do
       if (k >= n) exit
       k2=k+k
-      arth_i(k+1:min(k2,n))=temp+arth_i(1:min(k,n-k))
+      arth(k+1:min(k2,n))=temp+arth(1:min(k,n-k))
       temp=temp+temp
       k=k2
     end do
@@ -291,21 +292,21 @@ FUNCTION arth(first,increment,n)
 END FUNCTION arth
 
 FUNCTION assert_eq(n1,n2,string)
-!  Report and die if integers not all equal (used for size checking).
+  !  Report and die if integers not all equal (used for size checking).
   CHARACTER(LEN=*), INTENT(IN) :: string
   INTEGER, INTENT(IN) :: n1,n2
-  INTEGER :: assert_eq2
+  INTEGER :: assert_eq
   if (n1 == n2) then
-    assert_eq2=n1
+    assert_eq=n1
   else
     write (*,*) 'nrerror: an assert_eq failed with this tag:', &
       string
-    STOP 'program terminated by assert_eq2'
+    STOP 'program terminated by assert_eq'
   end if
 END FUNCTION assert_eq
 
 SUBROUTINE nrerror(string)
-!  Report a message, then die.
+  !  Report a message, then die.
   CHARACTER(LEN=*), INTENT(IN) :: string
   write (*,*) 'nrerror: ',string
   STOP 'program terminated by nrerror'
@@ -352,9 +353,9 @@ contains
       if(ju-jl <= 1) exit ! Repeat until this condition is satisfied
       jm=(ju+jl)/2 ! compute a midpoint
       if(ascnd .eqv. (x >= xx(jm))) then
-	jl=jm  
+        jl=jm  
       else
-	ju=jm
+        ju=jm
       endif
     enddo
     if(x == xx(1)) then

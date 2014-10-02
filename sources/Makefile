@@ -14,7 +14,6 @@ CC = mpicc
 
 OBJECTS = \
 modules.o \
-FF3D.o \
 na.o \
 Ketcham.o \
 read_mtx.o \

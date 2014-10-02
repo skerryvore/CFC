@@ -9,8 +9,8 @@ B=80000
 
 gdal_translate -of GMT $1.asc $1.grd
 gmt grdfft $1.grd -F-/-/$A/$B -G$1_filtered.grd -Nq
-gmt grdfft $1.grd -F-/-/$A/$B -G$1_filtered.grd -N576/768
+gmt grdfft $1.grd -F-/-/$A/$B -G$1_filtered.grd=ni -N576/768
 grd2xyz $1_filtered.grd > $1_filtered.xyz
-gdal_translate -of GTiff $1_filtered.xyz $1_filtered.tif
+gdal_translate -of AAIGrid $1_filtered.xyz $1_filtered.asc
 
 rm *.grd *.xyz *.grd.aux.xml

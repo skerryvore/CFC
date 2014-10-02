@@ -3,10 +3,10 @@
 # use these lines to produce a parallel (mpi) version to parallelize the inversion
 
 FLAGS = -g -L./LIB/shapelib-1.3.0/ -lshp -lgdal -I/usr/include -c -O \
-#-fbounds-check \
- -fcheck-array-temporaries \
-# -Wall \
-# -Wunused-parameter
+-fbounds-check \
+-fcheck-array-temporaries \
+-Wall \
+-Wunused-parameter
 
 FF90 = mpif90
 FF77 = mpif77 -DD

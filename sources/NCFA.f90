@@ -700,8 +700,10 @@ implicit none
     do J = 1, nmaps
     ! Locate points in the time-temperature history
     K = locate(sample(I)%optimum_path(1,:), sample(I)%temp_rec(J))
-    sample(I)%Erate_rec(J) = (sample(I)%optimum_path(2,K+1) - sample(I)%optimum_path(2,K)) / &
-                           & (sample(I)%optimum_path(1,K+1) - sample(I)%optimum_path(1,K)) 
+      if(K.gt.0) then
+        sample(I)%Erate_rec(J) = (sample(I)%optimum_path(2,K+1) - sample(I)%optimum_path(2,K)) / &
+    	  & (sample(I)%optimum_path(1,K+1) - sample(I)%optimum_path(1,K)) 
+      end if
     end do 
   end do
 

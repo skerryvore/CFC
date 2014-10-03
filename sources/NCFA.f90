@@ -545,7 +545,8 @@ implicit none
   do I=1,ndata
     write(*,'(a36,a20,a10,i4,a4,i3,a1)',advance='no') "Inverting neighbours around sample:",&
      & trim(sample(I)%s1name),"with ID: ", I,"(N=",sample(I)%nneighbours,")"
-    
+   
+    ! Initialize all arrays (Must be done before doing calculation) 
     fwd_ages    = 0._r4
     fwd_ndata   = 0_i4
     fwd_MTL     = 0._r4
@@ -588,7 +589,7 @@ implicit none
     range(1,1:(ttpoints-1))   = 0._r4   ! Time
     range(2,1:(ttpoints-1))   = 500._r4 ! Time
     range(1,4:(2*ttpoints-1)) = 0._r4   ! Temperature
-    range(2,4:(2*ttpoints-2)) = 200._r4 ! Temperature
+    range(2,4:(2*ttpoints-2)) = 150._r4 ! Temperature
     range(2,(2*ttpoints-1))   = 20._r4  ! Temperature
     
     mfitmin = 0.
@@ -839,7 +840,7 @@ subroutine forward(nd,NA_param,misfit)
   do I=1,NPOINTS
     if((ORDERED_TIME_SEQ(I)-TIME(I)) /= 0.0_r4) then
       misfit=1e22
-      goto 333
+      return
     endif
   enddo
 
@@ -877,10 +878,7 @@ subroutine forward(nd,NA_param,misfit)
 
   !Total likelihood is just the sum of the individual Likelihood.
   total_LKH=sum(LKH_sample(1:fwd_ndata)) 
-  !print*,total_LKH
   misfit=abs(total_LKH)        
-
-  333 continue
 
 end subroutine forward
 

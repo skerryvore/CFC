@@ -14,6 +14,10 @@ implicit none
   integer,parameter :: LU_dem=35
   integer,parameter :: LU_flt=36
   integer,parameter :: LU_dummy=37
+  integer,parameter :: nrow=9
+  integer (kind = 4) :: nt2
+  integer (kind = 4), dimension(:,:), allocatable :: ltri
+  integer (kind = 4) :: lct(1)
   character(len = 150 ) :: data_file
   character(len = 200 ) :: param_file  
   character(len = 150 ) :: output_file
@@ -22,25 +26,20 @@ implicit none
   character(len = 200 ) :: filename
   character(len = 1024) :: line
   character(len = 20  ) :: dummy
-  integer :: UTM_PROJECTION_ZONE(2)
-  integer :: ndata,icol
-  integer :: i,j,io,kk,L,K,M
-  logical :: SUPPRESS_UTM_PROJECTION
-  real(kind=r4),allocatable,dimension(:,:) :: distances
+  integer :: ndata
+  integer :: icol
+  integer :: i,j,io,kk,L,K,M, kk2
+  real(kind=r8),allocatable,dimension(:,:) :: distances
   integer,allocatable,dimension(:,:) :: dem_topo,flt_topo
   integer :: nx_dem,ny_dem
   integer :: nx_dem_flt,ny_dem_flt
-  real(kind=r8) :: rlon,rlat,rx,ry
+  real(kind=r8) :: rlon1,rlat1,rlon2, rlat2
   real(kind=r4)  :: range(2,1024)
-  type (database),dimension(:),allocatable :: sample
   integer :: nd
   integer :: ierr, r1
   logical :: file_exists
-  integer :: x_index,y_index
   integer :: nmaps, ncsamp, ncloc
   real(kind=r4), dimension(:),allocatable :: maps 
-  real(kind=r4) :: xllcorner,yllcorner,cellsize
-  real(kind=r4) :: xllcorner_flt,yllcorner_flt,cellsize_flt
   real(kind=r4) :: interp1
   real(kind=r4) :: dt
   real(kind=r4) :: mfitmin
@@ -55,6 +54,7 @@ implicit none
   logical :: debug
   logical :: FIRST_PATH, BOREHOLE
   logical :: time_sequence(10)
+  logical :: prntx
   real(kind=r4) :: t1,t2
   real(kind=r4) :: MTL, AFTA, FTLD(200), LKH 
   real(kind=r4) :: llTL, llFT 
@@ -65,9 +65,14 @@ implicit none
   TYPE(C_PTR), DIMENSION(200) :: stringPtrs
 
   ! List of variables used by TRIPACK
-  integer, dimension(:), allocatable :: LIST, LPTR, LEND, NEAR, NEXT
+  integer(kind = 4), dimension(:), allocatable :: LIST, LPTR, LEND, NEAR, NEXT
   integer :: IER, LNEW
   real(kind=r8),dimension(:), allocatable :: DIST
+  real(kind=8) :: wx1, wx2, wy1, wy2
+  character(len = 80) :: title
+  logical :: numbr
+  integer (kind = 4), parameter :: lplt = 72
+  real ( kind = 8 ), parameter :: pltsiz = 7.5D+00
 
   ! List of variables used by TROUTQ
   integer :: NCC, LCC(1), LOUT, NAT, NB, NT
@@ -81,6 +86,11 @@ implicit none
   real(kind = c_double),parameter :: alo=16.3
   real(kind = c_double) :: kAFTA,kFTLD(200),kMTL, kold
   real(kind = c_float) :: ktime(4),ktemp(4)
+
+  real(kind=c_double) :: dfGeoX, dfGeoY
+  real(kind=c_double) :: elevation
+  real(kind=c_double) :: rx, ry
+
 
   interface 
     subroutine ketch_main(ntime, ketchtime, ketchtemp, alo, final_age, oldest_age, fmean, fdist) bind(C, name="ketch_main_")
@@ -130,6 +140,33 @@ implicit none
     end subroutine
   end interface
   
+  interface 
+    subroutine getElevation(dfGeox, dfGeoY, Filename, elevation) bind(C, name="getElevation")
+      use iso_c_binding
+      implicit none
+      real(kind=c_double ) :: dfGeoX, dfGeoY
+      character(kind=c_char) :: Filename(*)
+      real(kind=c_double) :: elevation
+    end subroutine
+  end interface
+ 
+  interface 
+    subroutine GetDistanceBetweenPoints(X1, Y1, X2, Y2, distance) bind(C, name="GetDistanceBetweenPoints")
+      use iso_c_binding
+      implicit none
+      real(kind=c_double ) :: X1,Y1,X2,Y2
+      real(kind=c_double) :: distance
+    end subroutine
+  end interface
+  
+  interface 
+    subroutine LatLon2UTM(X1, Y1, X2, Y2) bind(C, name="LatLon2UTM")
+      use iso_c_binding
+      implicit none
+      real(kind=c_double ) :: X1,Y1,X2,Y2
+    end subroutine
+  end interface
+  
   debug=.TRUE.
 
   call MPI_Init(ierr )      
@@ -148,15 +185,18 @@ implicit none
   read(LU_param,*) output_file
   read(LU_param,*) cutwave
   read(LU_param,*) CIRCLE_DEF
+  
   select case(CIRCLE_DEF)
     case(RADIUS)
       read(LU_param,*) circle
     case(NCLOSEST)
       read(LU_param,*) ncloc
-  end select
+    end select
+  
   read(LU_param,*) dem_file ! read name of dem file  
   read(LU_param,*) filtered_file ! read name of dem file  
   read (LU_param,'(a1024)') line
+ 
   icol=scan(line,':')
   if (icol.ne.0) then
     search_geo=.TRUE.
@@ -168,84 +208,16 @@ implicit none
     search_geo=.FALSE.
     read (line,*) geotherm
   endif
+ 
   read(LU_param,*) dt
   read(LU_param,*) nmaps
+ 
   allocate(maps(nmaps))
   do I = 1, nmaps
     read(LU_param,*) maps(I)
   end do
 
   circle=circle*1000 ! Convert to m 
-
-  ! Check if a topography file exists:
-  inquire(FILE="./DEM/"//trim(adjustL(dem_file(1:index(dem_file,".asc",.false.)))//"asc"), exist=file_exists)
-  if(.not.file_exists) STOP "No input Topography"
-  ! Check if a filtered topography file exists:
-  inquire(FILE="./DEM/"//trim(adjustL(filtered_file(1:index(filtered_file,".asc",.false.)))//"asc"), exist=file_exists)
-  if(.not.file_exists) STOP "No input filtered Topography"
-
-  ! Open DEM file 
-  open(LU_dem,file="./DEM/"//trim(adjustL(dem_file)), status='unknown')    
-  read(LU_dem,'(a5,i20)') dummy, nx_dem
-  read(LU_dem,'(a5,i20)') dummy, ny_dem
-  read(LU_dem,'(a9,f20.5)') dummy,xllcorner
-  read(LU_dem,'(a9,f20.5)') dummy,yllcorner  
-  read(LU_dem,'(a8,f20.5)') dummy,cellsize
-
-  ! Open filtered file 
-  open(LU_flt,file="./DEM/"//trim(adjustL(filtered_file)), status='unknown')    
-  read(LU_flt,'(a5,i20)') dummy, nx_dem_flt
-  read(LU_flt,'(a5,i20)') dummy, ny_dem_flt
-  read(LU_flt,'(a9,f20.5)') dummy,xllcorner_flt
-  read(LU_flt,'(a9,f20.5)') dummy,yllcorner_flt  
-  read(LU_flt,'(a8,f20.5)') dummy,cellsize_flt
-
-  ! Check that the dimension and coordinates of the ll corner are identical.
-  if(nx_dem.ne.nx_dem_flt) STOP "NX dimensions do not match"
-  if(ny_dem.ne.ny_dem_flt) STOP "NY dimensions do not match"
-  if(xllcorner.ne.xllcorner_flt) STOP "X coordinate of lower left corners do not match"
-  if(yllcorner.ne.yllcorner_flt) STOP "Y coordinate of lower left corners do not match"
-  if(cellsize.ne.cellsize_flt) STOP "Cellsizes do not match"
-
-  ! Allocate array
-  allocate(dem_topo(nx_dem, ny_dem))
-  allocate(flt_topo(nx_dem, ny_dem))
-
-  do J=1,ny_dem
-    read(LU_dem,*) (dem_topo(I,J),I=1,nx_dem)
-  enddo
-  
-  do J=1,ny_dem
-    read(LU_flt,*) (flt_topo(I,J),I=1,nx_dem)
-  enddo
-
-  close(LU_dem)  
-  close(LU_flt)  
-
-  ! Now we want to save the filtered topography to a direct access file.
-  ! The file will then be used to extract the elevation of the samples.
-  inquire(iolength=r1) flt_topo(1,1)
-  open(72, access="direct", recl=r1,form='unformatted', status='scratch')
-
-  do I = 1, ny_dem
-    do J = 1, nx_dem
-      write(72,rec=((I - 1) * nx_dem + J))  flt_topo(J, I)
-    end do
-  end do
-
-  inquire(iolength=r1) dem_topo(1,1)
-  open(73, access="direct", recl=r1,form='unformatted', status='scratch')
-  do I = 1, ny_dem
-    do J = 1, nx_dem
-      write(73,rec=((I - 1) * nx_dem + J))  dem_topo(J, I)
-    end do
-  end do
-
-
-  ! We don't need the array in memory anymore.
-  deallocate(dem_topo)
-  deallocate(flt_topo)
-
 
   ! open sample file list
   open(LU_data,file='./data/'//trim(adjustL(data_file)), status='unknown')
@@ -254,10 +226,10 @@ implicit none
   ndata=0
   read(LU_data,*) ! header
   do
-    ndata=ndata+1
+    ndata = ndata + 1
     read(LU_data,*,iostat=io)
     if (io < 0) then
-     ndata=ndata-1
+     ndata = ndata - 1
      print*,"End of file: ",ndata," samples found"
      exit
     endif
@@ -286,15 +258,15 @@ implicit none
   read(LU_data,*) ! header
   do I=1,ndata
     read(LU_data,*)&
-    &sample(I)%s1name,&  
-    &sample(I)%lon,&
-    &sample(I)%lat,&  
-    &sample(I)%strat_old,&
-    &sample(I)%strat_young,&
-    &sample(I)%measured_elevation,&
-    &sample(I)%filepath
+    sample(I)%s1name,&  
+    sample(I)%lon,&
+    sample(I)%lat,&  
+    sample(I)%strat_old,&
+    sample(I)%strat_young,&
+    sample(I)%measured_elevation,&
+    sample(I)%filepath
     sample(I)%id = I
-  enddo
+  end do
 
   ! open each MTX file and read data
   do I=1,ndata
@@ -317,47 +289,49 @@ implicit none
                   &sample(I)%s2name)
   enddo
   
-  ! convert to UTM coordinates
-  UTM_PROJECTION_ZONE(1)=33
-  UTM_PROJECTION_ZONE(2)=7
+  ! Get UTM Coordinates
+  do I=1,ndata
+    call LatLon2UTM(real(sample(I)%lon, kind=c_double),&
+                    real(sample(I)%lat, kind=c_double),&
+                    rx,ry)
+    sample(I)%x = rx
+    sample(I)%y = ry
+  end do 
 
-  SUPPRESS_UTM_PROJECTION=.FALSE.
+  do I=1,ndata
+    call getElevation(real(sample(I)%lon,kind=c_double),&
+                      real(sample(I)%lat,kind=c_double),&
+                      "./DEM/"//trim(adjustL(dem_file))//C_NULL_CHAR,&
+                      elevation) 
+    sample(I)%flt_elevation = real(elevation)    
+    call getElevation(real(sample(I)%lon,kind=c_double),&
+                      real(sample(I)%lat,kind=c_double),&
+                      "./DEM/"//trim(adjustL(filtered_file))//C_NULL_CHAR,&
+                      elevation) 
+    sample(I)%dem_elevation = real(elevation)
+  enddo
 
   open(16, file="./DEM/Elevation_compare.txt",status='unknown')
-  write(16,*) "Measured ", "Extracted ", "Filtered ", "Lat ", "Lon ", "XUTM ", "YUTM "
-  
-  do I=1,ndata
-    rlon=real(sample(I)%lon,r8) ! Conversion to double precision
-    rlat=real(sample(I)%lat,r8) ! Conversion to double precision
-    call ll2utm (rlon, rlat, rx, ry, UTM_PROJECTION_ZONE, 3)
-    sample(I)%x=real(rx,r4) ! Conversion to simple precision
-    sample(I)%y=real(ry,r4) ! Conversion to simple precision
-
-    x_index=int((sample(I)%x-xllcorner)/cellsize)
-    y_index=int(ny_dem - (sample(I)%y-yllcorner)/cellsize)
-
-    ! Get dem elevation and filtered elevation from direct access file.
-    read(72, rec=((y_index - 1) * nx_dem + x_index)) sample(I)%flt_elevation    
-    read(73, rec=((y_index - 1) * nx_dem + x_index)) sample(I)%dem_elevation
-    
-    write(16,*) sample(I)%measured_elevation, sample(I)%dem_elevation, sample(I)%flt_elevation, &
+  write(16,'(3a10,2a10,2a15)') "Measured ", "Extracted ", "Filtered ", "Lat ", "Lon ", "XUTM", "YUTM"
+  do I = 1, ndata
+    write(16,'(3i10,2f10.2, 2f15.2)') int(sample(I)%measured_elevation), sample(I)%dem_elevation, sample(I)%flt_elevation, &
               & sample(I)%lat, sample(I)%lon, sample(I)%x, sample(I)%y
-  enddo
- 
-    
+  end do
+  close(16)
+
   ! calculate distances. Distances are calculated in a horizontal plane.
   do I=1,ndata
     do J=1,ndata
-      distances(I,J)=(sample(I)%x-sample(J)%x)**2+(sample(I)%y-sample(J)%y)**2
-      distances(I,J)=sqrt(distances(I,J))     
+      rlon1 = sample(I)%lon ; rlat1 = sample(I)%lat
+      rlon2 = sample(J)%lon ; rlat2 = sample(J)%lat
+      call GetDistanceBetweenPoints(rlon1, rlat1, rlon2, rlat2, distances(I,J))
     enddo
   enddo
-  
+
   ! find the neighbours
   sample%nneighbours = 0
-
   do I = 1, ndata
-    sample(I)%neighbours(:) = 0
+      sample(I)%neighbours(:) = 0
   end do
 
   kk = 0
@@ -393,7 +367,7 @@ implicit none
 
           sample(I)%neighbours_MTL(kk)     = sample(J)%MTL
           sample(I)%neighbours_MTL_err(kk) = sample(J)%MTL_err
-          sample(I)%neighbours_offsets(kk) = sample(J)%z-sample(J)%flt_elevation
+          sample(I)%neighbours_offsets(kk) = sample(J)%dem_elevation-sample(J)%flt_elevation
           sample(I)%neighbours_offsets(kk) = 0._r4
         endif
       end do
@@ -439,7 +413,7 @@ implicit none
 
         sample(I)%neighbours_MTL(kk)     = sample(idx(K))%MTL
         sample(I)%neighbours_MTL_err(kk) = sample(idx(K))%MTL_err
-        sample(I)%neighbours_offsets(kk) = sample(idx(K))%z-sample(idx(K))%flt_elevation
+        sample(I)%neighbours_offsets(kk) = sample(idx(K))%dem_elevation-sample(idx(K))%flt_elevation
         sample(I)%neighbours_offsets(kk) = 0._r4
 
         if(.not.BOREHOLE) ncsamp = ncsamp + 1
@@ -455,6 +429,7 @@ implicit none
   end if
 
   if(CIRCLE_DEF == VORONOI) then 
+    NCC = 0 
     ! Initialize arrays, LIST, LPTR, LEND, LNEW, NEAR, NEXT, DIST, IER
     IER = 0
     allocate(LIST(6 * ndata - 12))
@@ -465,30 +440,88 @@ implicit none
     allocate(DIST(ndata))
 
     ! Calculate delaunay triangulation using TRIPACK
-    call TRMESH(ndata, sample%x, sample%y, LIST, LPTR, LEND,LNEW, NEAR, NEXT, DIST,IER) 
 
-    if (IER /= 0) print*, "Error during triangulation"
+    write(*, '(a)') "TRIPACK library"
+    write(*, '(a,i6)') "The number of nodes is ", ndata
+
+    ! Create the Delaunay triangulation (TRMESH), and test for errors
+    call TRMESH(ndata, sample%x, sample%y,&
+                LIST, LPTR, LEND,LNEW, NEAR, NEXT, DIST,ier) 
+    if ( ier == -2 ) then
+      write ( *, '(a)' ) ' '
+      write ( *, '(a)' ) '  Error in TRMESH:'
+      write ( *, '(a)' ) '  The first three nodes are collinear.'
+      stop
+    else if ( ier == -4 ) then
+      write ( *, '(a)' ) ' '
+      write ( *, '(a)' ) '  Error in TRMESH:'
+      write ( *, '(a)' ) '  Invalid triangulation.'
+      stop
+    else if ( 0 < ier ) then
+      write ( *, '(a)' ) ' '
+      write ( *, '(a)' ) '  Error in TRMESH:'
+      write ( *, '(a)' ) '  Duplicate nodes encountered.'
+      stop
+    else if ( ier > 0) then
+      write ( *, '(a)' ) ' Error '
+      stop 
+    end if
+
+
+    prntx = .true.
+    allocate(ltri(nrow,2*ndata-5))
+    call trprnt ( ncc, lcc, ndata, sample%x, sample%y, list, lptr, lend, prntx )
+    call trlist ( ncc, lcc, ndata, list, lptr, lend, nrow, nt2, ltri, lct, ier )
+    call trlprt ( ncc, lct, ndata, sample%x, sample%y, nrow, nt2, ltri, prntx )
+    deallocate(ltri)
+
+    ! Create an EPS file image of the triangulation
+    sample%xnorm = sample%y / maxval(sample%y)
+    sample%ynorm = sample%x / maxval(sample%x)
+    wx1 = minval ( sample(1:ndata)%xnorm )
+    wx2 = maxval ( sample(1:ndata)%xnorm )
+    wy1 = minval ( sample(1:ndata)%ynorm )
+    wy2 = maxval ( sample(1:ndata)%ynorm )
+
+    !  Create an encapsulated PostScript file image of the triangulation.
+    !
+    open ( unit = lplt, file = 'tripack_prb.eps', status = 'unknown' )
+    !
+    !  NUMBR = TRUE iff nodal indexes are to be displayed.
+    !
+    numbr = ( ndata <= 200 )
+    !
+    !  Store a plot title.  It must be enclosed in parentheses.
+    !
+    title = '(Triangulation)'
+   
+    call trplot ( lplt, pltsiz, wx1, wx2, wy1, wy2, ncc, lcc, ndata, &
+        sample%xnorm, sample%ynorm, LIST, LPTR, LEND, title, numbr, IER )
+ 
+    close ( unit = lplt )
+ 
+    if ( ier == 0 ) then
+      write ( *, '(a)' ) ' '
+      write ( *, '(a)' ) '  TRPLOT has created a triangulation plot.'
+    else
+      write ( *, '(a)' ) ' '
+      write ( *, '(a,i6)' ) '  TRPLOT failed with IER = ', ier
+    end if
 
     ! Find neigbours of each sample
-    NCC = 0
     allocate(NNABS(ndata))
     allocate(NPTR(ndata))
     allocate(NPTR1(ndata))
-    allocate(NABOR(12*ndata)) ! Not sure about the optimum size
+    allocate(NABOR(ndata))
     allocate(NBNOS(ndata))
-
-    call TROUTQ(NCC, LCC, ndata, sample%x, sample%y, LIST, LPTR, LEND, LOUT, NNABS, NPTR,&
-      &  NPTR1, NABOR, NBNOS, NAT, NB, NT)
 
     do I=1, ndata
 
-      sample(I)%nneighbours = NNABS(I)
-      kk = sample(I)%nneighbours
-
-      sample(I)%neighbours(1:kk)       = NABOR(NPTR(I):NPTR1(I))
+      call find_node_neighbors(I,LIST, LPTR, LEND, NABOR, kk)
+      sample(I)%nneighbours            = kk
+      sample(I)%neighbours(1:kk)       = NABOR(1:kk)
 
       do L=1, kk 
-
         J = sample(I)%neighbours(L) 
         sample(I)%neighbours_ncounts(L) = sample(J)%ncounts
         sample(I)%neighbours_zeta(L)    = sample(J)%zeta
@@ -509,7 +542,7 @@ implicit none
 
         sample(I)%neighbours_MTL(L)     = sample(J)%MTL
         sample(I)%neighbours_MTL_err(L) = sample(J)%MTL_err
-        sample(I)%neighbours_offsets(L) = sample(J)%z-sample(J)%flt_elevation
+        sample(I)%neighbours_offsets(L) = sample(J)%dem_elevation-sample(J)%flt_elevation
         sample(I)%neighbours_offsets(L) = 0._r4
       end do
 
@@ -547,18 +580,7 @@ implicit none
      & trim(sample(I)%s1name),"with ID: ", I,"(N=",sample(I)%nneighbours,")"
    
     ! Initialize all arrays (Must be done before doing calculation) 
-    fwd_ages    = 0._r4
-    fwd_ndata   = 0_i4
-    fwd_MTL     = 0._r4
-    fwd_offsets = 0._r4
-    fwd_ncounts = 0_i4
-    fwd_zeta    = 0._r4
-    fwd_rhodos  = 0._r4
-    fwd_ntl     = 0_i4
-    fwd_NS      = 0_i4
-    fwd_NI      = 0_i4
-    fwd_TL      = 0._r4
-    
+   
     fwd_ages(1:kk)    = sample(I)%neighbours_ages(1:kk)
     fwd_ndata         = sample(I)%nneighbours
     fwd_MTL(1:kk)     = sample(I)%neighbours_MTL(1:kk)
@@ -599,12 +621,13 @@ implicit none
         
     call na(nd,range)
 
-    write(*,*) "misfit:", mfitmin !, "Neighbours:",sample(I)%neighbours_ages(1:sample(I)%nneighbours)
+    write(*,*) "misfit:", mfitmin
 
     sample(I)%misfit                     = mfitmin
     sample(I)%bestpath(1,1:(ttpoints-1)) = model_opt(1:(ttpoints-1))
     sample(I)%bestpath(1,ttpoints)       = 500._r4
     sample(I)%bestpath(2,:)              = model_opt(4:(2*ttpoints-1))
+
 
     if(search_geo.eqv..TRUE.) then
       sample(I)%bestgeotherm = model_opt(nd)
@@ -640,6 +663,7 @@ implicit none
           call ketch_main(int(ttpoints,c_int),ktime,ktemp,alo,kAFTA,kOld,kMTL,kFTLD)
 
           AFTA = real(kAFTA,r4)
+          print*, AFTA, sample(I)%FTage
           FTLD = real(kFTLD,r4)
           MTL  = real(kMTL, r4)
 
@@ -682,9 +706,9 @@ implicit none
 
   ! write general results to output file
   open(LU_output,file = trim(adjustL(output_file)), status='unknown')
-  write(LU_output,*) "Sample Name", "Lowest Misfit", "Time points", "Temp. points" 
+  write(LU_output,'(a15,11a10)') "Sample Name", "Lowest Misfit", "t1","t2","t3","t4","t5","T1","T2","T3","T4","T5" 
   do I=1,ndata  
-    write(LU_output,*) sample(I)%s2name,sample(I)%Lwmisfit,sample(I)%bestpath(1,:),&
+    write(LU_output,'(a15,11f10.1)') sample(I)%s2name,sample(I)%Lwmisfit,sample(I)%bestpath(1,:),&
     &sample(I)%bestpath(2,:)
   enddo
 
@@ -730,7 +754,7 @@ implicit none
     ! I am still working on the routine that has to be written in C
 
     call create_shape_points(1_c_int, "Temp"//trim(adjustL(filename))//".shp"//achar(0),&
-      &  real(sample(:)%x,c_double), real(sample(:)%y, c_double), ndata)
+      &  real(sample(:)%x,c_double), real(sample(:)%y, c_double), int(ndata,i8))
 
 
     ! Create the .prj file associated to the shapefile
@@ -750,7 +774,7 @@ implicit none
     end do
 
     call createDBF("Temp"//trim(adjustL(filename))//".dbf"//achar(0),&
-      & sample(:)%id, ndata,  real(sample(:)%x, c_double),&
+      & sample(:)%id, int(ndata,i8),  real(sample(:)%x, c_double),&
       & real(sample(:)%y, c_double), &
       & real(sample(:)%dem_elevation, c_double), stringPtrs(1:ndata),&
       & real(sample(:)%temp_rec(J), c_double), real(sample(:)%ERate_rec(J), c_double),&
@@ -1065,376 +1089,6 @@ return
 end
 
 !*************************************************************************
-subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
-
-  IMPLICIT NONE
-
-  real (kind=8) latitude, longitude
-  real (kind=8) utm_x, utm_y
-  integer       grid_zone(2)
-  integer       datum
-
-  real (kind=8)  a, b, f, e, e2, e4, e6
-  real (kind=8)  phi, lambda, lambda0, phi0, k0
-  real (kind=8)  t, rho, x, y, mm, mm0
-  real (kind=8)  aa, aa2, aa3, aa4, aa5, aa6
-  real (kind=8)  ep2, nn, tt, cc
-
-  real (kind=8) M_PI
-
-  integer CLARKE_1866_DATUM
-  parameter (CLARKE_1866_DATUM = 1)
-  integer GRS_80_DATUM
-  parameter (GRS_80_DATUM = 2)
-  integer WGS_84_DATUM
-  parameter (WGS_84_DATUM = 3)
-
-  !---------------------------------------------------------------------------
-
-
-  m_pi = ACOS (-1.0)
-
-  !/* Converts lat/long to UTM, using the specified datum */
-
-  if (datum == CLARKE_1866_DATUM) then      ! CLARKE_1866_DATUM:
-    a = 6378206.4
-    b = 6356583.8
-  elseif (datum == GRS_80_DATUM) then      ! GRS_80_DATUM:
-    a = 6378137
-    b = 6356752.3
-  elseif (datum == WGS_84_DATUM) then      ! WGS_84_DATUM:
-    a = 6378137.0           !/* semimajor axis of ellipsoid (meters) */
-    b = 6356752.31425       !/* semiminor axis of ellipsoid (meters) */
-  else
-    write (*,*) 'Unknown datum: ', datum
-    return
-  endif
-
-  !/* Calculate flatness and eccentricity */
-
-  f = 1 - (b / a)
-  e2 = 2 * f - f * f
-  e = sqrt (e2)
-  e4 = e2 * e2
-  e6 = e4 * e2
-
-  !/* Convert latitude/longitude to radians */
-
-  phi = latitude * M_PI / 180.0
-  lambda = longitude * M_PI / 180.0
-
-  !/* Figure out the UTM zone, as well as lambda0 */
-
-  call get_grid_zone (longitude, latitude, grid_zone, lambda0)
-
-  phi0 = 0.0
-
-  !/* See if this will use UTM or UPS */
-
-  if (latitude .GT. 84.0) then
-
-    !/* use Universal Polar Stereographic Projection (north polar aspect) */
-
-    k0 = 0.994
-
-    t = sqrt ( ((1 - sin (phi)) / (1 + sin (phi))) * &
-      (((1 + e * sin (phi)) / (1 - e * sin (phi))) ** e) )
-    rho = 2.0 * a * k0 * t / sqrt ( ((1.0 + e) ** (1.0 + e)) * ((1.0 - e) ** (1.0 - e)) )
-    !!! Not needed (dhg) m = cos (phi) / sqrt (1.0 - e2 * sin (phi) * sin (phi))
-
-    x = rho * sin (lambda - lambda0)
-    y = -rho * cos (lambda - lambda0)
-    !!! Not needed (dhg) k = rho * a * m
-
-    !/* Apply false easting/northing */
-
-    x = x + 2000000.0
-    y = y + 2000000.0
-
-  elseif (latitude .LT. -80.0) then
-
-    !/* use Universal Polar Stereographic Projection (south polar aspect) */
-
-    phi = -phi
-    lambda = -lambda
-    lambda0 = -lambda0
-
-    k0 = 0.994
-
-    t = sqrt (((1.0 - sin (phi)) / (1.0 + sin (phi))) * &
-      ( ( (1.0 + e * sin (phi)) / (1.0 - e * sin (phi)) ** e) ) )
-    rho = 2.0 * a * k0 * t / sqrt ( ((1+e) ** (1+e)) * ((1-e) ** (1-e)) )
-    !!! Not needed (dhg) m = cos (phi) / sqrt (1.0 - e2 * sin (phi) * sin (phi))
-
-    x = rho * sin (lambda - lambda0)
-    y = -rho * cos (lambda - lambda0)
-    !!! Not needed (dhg) k = rho * a * m
-
-    x = -x
-    y = -y
-
-    !/* Apply false easting/northing */
-
-    x = x + 2000000.0
-    y = y + 2000000.0
-
-  else
-
-    !/* Use UTM */
-
-    !/* set scale on central median (0.9996 for UTM) */
-
-    k0 = 0.9996
-
-    mm = a * ((1.0-e2/4.0 - 3.0*e4/64.0 - 5.0*e6/256.0) * phi - &
-      (3.0*e2/8.0 + 3.0*e4/32.0 + 45.0*e6/1024.0) * sin (2.0*phi) + &
-      (15.0*e4/256.0 + 45.0*e6/1024.0) * sin (4.0*phi) - &
-      (35.0*e6/3072.0) * sin (6.0*phi))
-
-    mm0 = a * ((1.0-e2/4.0 - 3.0*e4/64.0 - 5.0*e6/256.0) * phi0 - &
-      (3.0*e2/8.0 + 3.0*e4/32.0 + 45.0*e6/1024.0) * sin (2.0*phi0) + &
-      (15.0*e4/256.0 + 45.0*e6/1024.0) * sin (4.0*phi0) - &
-      (35.0*e6/3072.0) * sin (6.0*phi0))
-
-    aa = (lambda - lambda0) * cos(phi)
-    aa2 = aa * aa
-    aa3 = aa2 * aa
-    aa4 = aa2 * aa2
-    aa5 = aa4 * aa
-    aa6 = aa3 * aa3
-
-    ep2 = e2 / (1.0 - e2)
-    nn = a / sqrt (1.0 - e2 * sin (phi) * sin (phi))
-    tt = tan (phi) * tan (phi)
-    cc = ep2 * cos (phi) * cos (phi)
-
-    !!! Not needed (dhg) k = k0 * (1 + (1+cc)*aa2/2 + (5-4*tt+42*cc+13*cc*cc-28*ep2) * aa4 / 24.0 + &
-    !!! Not needed (dhg)          (61-148*tt+16*tt*tt) * aa6 / 720.0)
-    x = k0 * nn * (aa + (1-tt+cc) * aa3 / 6 + &
-      (5-18*tt+tt*tt+72*cc-58*ep2) * aa5 / 120.0)
-    y = k0 * (mm - mm0 + nn * tan (phi) * &
-      (aa2 / 2 + (5-tt+9*cc+4*cc*cc) * aa4 / 24.0 + &
-      (61 - 58*tt + tt*tt + 600*cc - 330*ep2) * aa6 / 720))
-
-    !/* Apply false easting and northing */
-
-    x = x + 500000.0
-    if (y .LT. 0.0) then
-      y = y + 10000000.0
-    endif
-  endif
-
-  !/* Set entries in UTM structure */
-
-  utm_x = x
-  utm_y = y
-
-  !/* done */
-
-  return
-  end
-
-  !*************************************************************************
-  subroutine utm2ll (utm_x, utm_y, longitude, latitude, grid_zone, datum)
-
-    IMPLICIT NONE
-
-    real (kind=8) utm_x, utm_y
-    real (kind=8) latitude, longitude
-    integer       grid_zone(2)
-    integer       datum
-
-    integer ierr
-    real (kind=8)  a, b, f, e, e2, e4, e6, e8
-    real (kind=8)  lambda0, x, y, k0, rho, t, chi, phi, phi1, phit
-    real (kind=8)  lambda, phi0, e1, e12, e13, e14
-    real (kind=8)  mm, mm0, mu, ep2, cc1, tt1, nn1, rr1
-    real (kind=8)  dd, dd2, dd3, dd4, dd5, dd6
-
-    real (kind=8) M_PI
-    !!!   parameter (M_PI = 3.141592654)
-    real (kind=8) LOWER_EPS_LIMIT
-    parameter (LOWER_EPS_LIMIT = 1.0e-14)
-    real (kind=8) M_PI_2
-
-    integer CLARKE_1866_DATUM
-    parameter (CLARKE_1866_DATUM = 1)
-    integer GRS_80_DATUM
-    parameter (GRS_80_DATUM = 2)
-    integer WGS_84_DATUM
-    parameter (WGS_84_DATUM = 3)
-
-    !---------------------------------------------------------------------------
-
-
-    m_pi = ACOS (-1.0)
-
-    M_PI_2 = M_PI * 2.0
-
-    !/* Converts UTM to lat/long, using the specified datum */
-
-    if (datum == CLARKE_1866_DATUM) then      ! CLARKE_1866_DATUM:
-      a = 6378206.4
-      b = 6356583.8
-    elseif (datum == GRS_80_DATUM) then       ! GRS_80_DATUM:
-      a = 6378137
-      b = 6356752.3
-    elseif (datum == WGS_84_DATUM) then       ! WGS_84_DATUM:
-      a = 6378137.0             !/* semimajor axis of ellipsoid (meters) */
-      b = 6356752.31425         !/* semiminor axis of ellipsoid (meters) */
-    else
-      write (*,*) 'Unknown datum: ', datum
-      return
-    endif
-
-    !/* Calculate flatness and eccentricity */
-
-    f = 1.0 - (b / a)
-    e2 = (2.0 * f) - (f * f)
-    e = sqrt (e2)
-    e4 = e2 * e2
-    e6 = e4 * e2
-    e8 = e4 * e4
-
-    !/* Given the UTM grid zone, generate a baseline lambda0 */
-
-    call get_lambda0 (grid_zone, lambda0, ierr)
-    if (ierr .NE. 0) then
-      write (*,*) 'Unable to translate UTM to LL'
-      return
-    endif
-
-    latitude = (FLOAT (grid_zone(2)) * 8.0) - 80.0
-
-    !/* Take care of the polar regions first. */
-
-    if (latitude .GT. 84.0) then !/* north polar aspect */
-
-      !/* Subtract the false easting/northing */
-
-      x = utm_x - 2000000.0
-      y = utm_y - 2000000.0
-
-      !/* Solve for inverse equations */
-
-      k0 = 0.994
-      rho = sqrt (x*x + y*y)
-      t = rho * sqrt ( ((1+e) ** (1+e)) * ((1-e) ** (1-e)) ) / (2*a*k0)
-
-      !/* Solve for latitude and longitude */
-
-      chi = M_PI_2 - 2 * atan (t)
-      phit = chi + (e2/2 + 5*e4/24 + e6/12 + 13*e8/360) * sin(2*chi) + &
-        (7*e4/48 + 29*e6/240 + 811*e8/11520) * sin(4*chi) + &
-        (7*e6/120 + 81*e8/1120) * sin(6*chi) + &
-        (4279*e8/161280) * sin(8*chi)
-
-      do while (ABS (phi-phit) .GT. LOWER_EPS_LIMIT)
-        phi = phit
-        phit = M_PI_2 - 2 * atan ( t * (((1 - e * sin (phi)) / (1 + e * sin (phi))) ** (e / 2)) )
-      enddo
-
-      lambda = lambda0 + atan2 (x, -y)
-
-    elseif (latitude .LT. -80.0) then !/* south polar aspect */
-
-      !/* Subtract the false easting/northing */
-
-      x = -(utm_x - 2000000)
-      y = -(utm_y - 2000000)
-
-      !/* Solve for inverse equations */
-
-      k0 = 0.994
-      rho = sqrt (x*x + y*y)
-      t = rho * sqrt ( ((1+e) ** (1+e)) * ((1-e) ** (1-e)) ) / (2*a*k0)
-
-      !/* Solve for latitude and longitude */
-
-      chi = M_PI_2 - 2 * atan (t)
-      phit = chi + (e2/2 + 5*e4/24 + e6/12 + 13*e8/360) * sin (2*chi) + &
-        (7*e4/48 + 29*e6/240 + 811*e8/11520) * sin (4*chi) + &
-        (7*e6/120 + 81*e8/1120) * sin (6*chi) + &
-        (4279*e8/161280) * sin (8*chi)
-
-      do while (ABS (phi-phit) .GT. LOWER_EPS_LIMIT)
-        phi = phit;
-        phit = M_PI_2 - 2 * atan (t * ( ((1-e*sin(phi)) / (1+e*sin(phi)) ) ** (e/2)))
-      enddo
-
-      phi = -phi
-      lambda = -(-lambda0 + atan2 (x , -y))
-
-    else
-
-      !/* Now take care of the UTM locations */
-
-      k0 = 0.9996
-
-      !/* Remove false eastings/northings */
-
-      x = utm_x - 500000.0
-      y = utm_y
-
-      if (latitude .LT. 0.0) then  !/* southern hemisphere */
-        y = y - 10000000.0
-      endif
-
-      !/* Calculate the footpoint latitude */
-
-      phi0 = 0.0
-      e1 = (1.0 - sqrt (1.0-e2)) / (1.0 + sqrt (1.0-e2))
-      e12 = e1 * e1
-      e13 = e1 * e12
-      e14 = e12 * e12
-
-      mm0 = a * ((1.0-e2/4.0 - 3.0*e4/64.0 - 5.0*e6/256.0) * phi0 - &
-        (3.0*e2/8.0 + 3.0*e4/32.0 + 45.0*e6/1024.0) * sin (2.0*phi0) + &
-        (15.0*e4/256.0 + 45.0*e6/1024.0) * sin (4.0*phi0) - &
-        (35.0*e6/3072.0) * sin (6.0*phi0))
-      mm = mm0 + y/k0;
-      mu = mm / (a * (1.0-e2/4.0-3.0*e4/64.0-5.0*e6/256.0))
-
-      phi1 = mu + (3.0*e1/2.0 - 27.0*e13/32.0) * sin (2.0*mu) + &
-        (21.0*e12/16.0 - 55.0*e14/32.0) * sin (4.0*mu) + &
-        (151.0*e13/96.0) * sin (6.0*mu) + &
-        (1097.0*e14/512.0) * sin (8.0*mu)
-
-      !/* Now calculate lambda and phi */
-
-      ep2 = e2 / (1.0 - e2)
-      cc1 = ep2 * cos (phi1) * cos (phi1)
-      tt1 = tan (phi1) * tan (phi1)
-      nn1 = a / sqrt (1.0 - e2 * sin (phi1) * sin (phi1))
-      !!!DHG Old Code rr1 = a * (1.0 - e2) / ((1.0 - e2 * sin (phi) * sin (phi)) ** 1.5)
-      !!!DHG L.Dozier's fix is next
-      rr1 = a * (1.0 - e2) / ((1.0 - e2 * sin (phi1) * sin (phi1)) ** 1.5)
-      dd = x / (nn1 * k0)
-
-      dd2 = dd * dd
-      dd3 = dd * dd2
-      dd4 = dd2 * dd2
-      dd5 = dd3 * dd2
-      dd6 = dd4 * dd2
-
-      phi = phi1 - (nn1 * tan (phi1) / rr1) * &
-        (dd2/2.0 - (5.0+3.0*tt1+10.0*cc1-4.0*cc1*cc1-9.0*ep2) * dd4 / 24.0 + &
-        (61.0+90.0*tt1+298.0*cc1+45.0*tt1*tt1-252.0*ep2-3.0*cc1*cc1) * dd6 / 720.0)
-      lambda = lambda0 + &
-        (dd - (1.0+2.0*tt1+cc1) * dd3 / 6.0 + &
-        (5.0-2.0*cc1+28.0*tt1-3.0*cc1*cc1+8.0*ep2+24.0*tt1*tt1) * dd5 / 120.0) / cos (phi1)
-    endif
-
-    !/* Convert phi/lambda to degrees */
-
-    latitude = phi * 180.0 / M_PI
-    longitude = lambda * 180.0 / M_PI
-
-    !/* All done */
-
-    return
-    end
-
 
     subroutine clean_input(U1,name,U2,char)
       implicit none
@@ -1522,6 +1176,7 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
 
       use precision_kind
       use fwd
+      use CFC
 
       implicit none
 
@@ -1534,18 +1189,62 @@ subroutine ll2utm (longitude, latitude, utm_x, utm_y, grid_zone, datum)
       integer :: nh
       integer :: i
       integer :: k
+      integer :: idx
 
       real(kind=r4) :: models (nd,*)
       real(kind=r4) :: misfit (ntot)
       character*(*) header
       character*5 :: tempo
 
+
       write(tempo,'(i5)') model_id
       open (87,file='./results/'//trim(adjustL(run_name))//'/NA_results_sample'//trim(adjustL(tempo))//'.txt',status='unknown')
+      write (87,*) "Total number of samples:", sample(model_id)%nneighbours + 1
+      write (87,'(80a)') ("-", I = 1, 80)
+      write (87,300) "Name", "lat", "lon","Elev.meas", "Elev.dem","Elev.flt","FTage", "MTL"
+      write (87,'(80a)') ("-", I = 1, 80)
+      write (87,301)   sample(model_id)%s1name,&
+                     sample(model_id)%lat,&
+                     sample(model_id)%lon,&
+                     int(sample(model_id)%measured_elevation),&
+                     sample(model_id)%dem_elevation,&
+                     sample(model_id)%flt_elevation,&
+                     sample(model_id)%FTage,&
+                     sample(model_id)%MTL
+
+      do i=1,sample(model_id)%nneighbours
+     
+        idx = sample(model_id)%neighbours(i)
+        write (87,301) sample(idx)%s1name,&
+                     sample(idx)%lat,&
+                     sample(idx)%lon,&
+                     int(sample(idx)%measured_elevation),&
+                     sample(idx)%dem_elevation,&
+                     sample(idx)%flt_elevation,&
+                     sample(idx)%FTage,&
+                     sample(idx)%MTL
+      end do
+
+
+      write (87,'(80a)') ("-", I = 1, 80)
+      write (87, *) "Model with lowest misfit"
+      write (87, 302) sample(model_id)%optimum_LKH, sample(model_id)%optimum_path(1,1:3), sample(model_id)%optimum_path(2,:)   
+      write (87,'(80a)') ("-", I = 1, 80)
+      write (87, *) "List of models" 
+      write (87,'(80a)') ("-", I = 1, 80)
+     
+      write (87, 300) "Misfit", "t1", "t2", "t3", "T1", "T2", "T3", "T4" 
+      write (87,'(80a)') ("-", I = 1, 80)
       do i=1,ntot
-        write (87,*) misfit(i),(models(k,i),k=1,nd)
+      
+        write (87,302) misfit(i),(models(k,i),k=1,nd)
+      
       enddo
       close (87)
+      
+      300 format(8a10)
+      301 format(a10, 2f10.1, 3i10, 2f10.1)
+      302 format(E10.1,100f10.1)
 
       return
     end subroutine

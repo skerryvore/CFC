@@ -469,7 +469,7 @@ if (.not.vivi) then !VKP
         if (fnme(1:nfnme).eq.'Nil') then
         zNZ=0.d0
         else
-        open (8,file='data/'//fnme(1:nfnme),status='old')
+        open (8,file='./data/'//fnme(1:nfnme),status='old')
         read (8,*) zNZ
         close (8)
         endif

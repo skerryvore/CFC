@@ -8,9 +8,13 @@ FLAGS = -g -L./LIB/shapelib-1.3.0/ -lshp -lgdal -I/usr/include -c -O \
 -Wall \
 -Wunused-parameter
 
+CPPFLAGS = -g -lm -lgdal -lstdc++ -c
+
 FF90 = mpif90
 FF77 = mpif77 -DD
 CC = mpicc
+CPP = mpic++
+
 
 OBJECTS = \
 modules.o \
@@ -22,7 +26,9 @@ shape.o \
 dbf.o \
 gdal.o \
 troutq.o \
-tripack.o
+tripack.o \
+locategdal.o \
+calc_distance.o
 
 
 .f90.o:
@@ -37,8 +43,11 @@ tripack.o
 .c.o:
 	$(CC) $(FLAGS) $*.c
 
+.cpp.o:
+	$(CPP) $(CPPFLAGS) $*.cpp
+
 NCFA:$(OBJECTS)
-	$(FF90) $(OBJECTS) -L./LIB/shapelib-1.3.0 -lshp -lgdal -I/usr/include -o ../bin/NCFA
+	$(FF90) $(OBJECTS) -L./LIB/shapelib-1.3.0 -lshp -lgdal -lm -lstdc++ -I/usr/include -o ../bin/NCFA
 	
 all: $(OBJECTS)
 	make NFCA

@@ -18,11 +18,13 @@ module CFC
     character :: s1name*50
     character :: s2name*50
     character :: filepath*200
-    real(kind=r4) :: x
-    real(kind=r4) :: y
+    real(kind=r8) :: x
+    real(kind=r8) :: y
+    real(kind=r8) :: xnorm
+    real(kind=r8) :: ynorm
     integer :: z
-    real(kind=r4) :: lat
-    real(kind=r4) :: lon
+    real(kind=r8) :: lat
+    real(kind=r8) :: lon
     character :: country*50
     integer :: NCOUNTS
     integer :: NTL
@@ -76,6 +78,7 @@ module CFC
     real(kind=r4) :: optimum_LKH
     real(kind=r4) :: optimum_geotherm
   end type database
+  type (database),dimension(:),allocatable :: sample
 end module CFC
 
 module fwd

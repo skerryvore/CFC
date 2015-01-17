@@ -25,16 +25,13 @@ subroutine generate_data(rho, age, zeta, pdf, vals, sampleid, mtl)
   real(kind = sp) :: dum
   real(kind = sp), dimension(17) :: pdf, vals
   real(kind = sp), dimension(:), allocatable :: TL 
-  character(len=3) :: str
+  character(len=100) :: str
   real(kind = sp) mtl, mtl_std
 
 
   ! Random number seed
   call system_clock(SEED)
-  SEED2 = SEED
-  SEED = -1 * SEED
-  dum = ran3(SEED)
-  SEED = SEED2
+  call random_seed(SEED)
   
   ! Number of crystals
   Nc = 30
@@ -53,23 +50,13 @@ subroutine generate_data(rho, age, zeta, pdf, vals, sampleid, mtl)
   ! For Nc crystals, generate synthetic Ns and Ni count data using binomial 
   ! distribution, conditional on total counts Ns + Ni
   do I = 1, Nc
-    call random_seed(SEED)
     NsNi = int(ran3(SEED)*1000.0)
     Ns(I) = 0
     nloop = 0
-    do 
-      Ns(I) = int(bnldev(prob, NsNi, SEED))
-      Ni(I) = NsNi - Ns(I)
-      if(Ns(I).eq. 0.and.nloop.ne.100) then
-	nloop = nloop + 1
-	cycle
-      end if
-      if(nloop == 100) then
-	call random_seed(SEED)
-	cycle
-      endif
-      exit
-    end do
+      
+    Ns(I) = int(bnldev(prob, NsNi, SEED))
+    Ni(I) = NsNi - Ns(I)
+  
   end do
 
   ! Calculate central age
@@ -90,8 +77,10 @@ subroutine generate_data(rho, age, zeta, pdf, vals, sampleid, mtl)
 
   ! Write the name of the sample
   write(66,*) "Sample"//trim(adjustL(str))
-  write(66,*) -999 ! Not used
-  write(66,*) nconstraints, size(TL), size(Ns), zeta, rhod, totco 
+  write(66,'(i4)') -999
+  write(66,'(3i4,f7.1,f10.1,i5)') nconstraints, size(TL),&
+              size(Ns), zeta, rhod,&
+              totco 
 
   do I = 1, nconstraints
     write(66,*) -999 ! not used
@@ -379,4 +368,7 @@ subroutine random_from_distrib(pdf, vals, X, N)
   end do
 
 end subroutine random_from_distrib
+
+
+
 end subroutine

@@ -22,27 +22,28 @@ $     the number of points in the latitude direction (ny) will contain the numbe
 $     the randomly distributed points.
 $     the topography file should then contain nx triplets of longitude, latitude and height of each point
 $     followed by ny triplets of integer numbers between 1 and nx giving the triangular connectivity
-Whataroa.dat
+KingsCanyon.dat
 
 $ (3) the number of points in the longitude and latitude directions, respectively
 $     if they are negative, they correspond to the total number of points and the number of triangles connecting them
-121 74
+61 61
 
 $ (4) the spacing in degrees of longitude and latitude, respectively
 $     This is not used in case nx and ny are negative (random grid)
-0.00833333 0.00833333
+0.0083333 0.0083333
 
 $ (5) a skipping factor (1 means all points of the topography are used; 2 means that
 $     every second point is used etc). Note that nx, ny AND nskip define the resolution of the
 $     finite element grid in the horizontal directions
 $     again this is not used in case nx and ny are negative (random grid)
-3
+2
 
 $ (6) the longitude and latitude of the bottom left corner of the topo file
-170 -43.7
+$170. -43.
+-119.5 37
 
 $ (7) the number of time steps in the tectonomorphic scenario
-3
+2
 
 $ (8) the erosional time scale (exponential decay rate of topography)
 0.
@@ -52,9 +53,8 @@ $ (a) a starting time (in Myr in the past)
 $ (b) an amplification factor for the topography
 $ (c) an offset factor (in km), 
 $ (d) an output flag (for this time step: 0=no output / 1=output)
-10. 0. 0. 1
-6. 0. 0. 1
-4. 1. 0. 1
+100. 3. 0. 1
+90. 3. 0. 1
 0. 1. 0. 1
 
 $ (10) a flag for isostasy (1 isostasy on; 0 isostast off)
@@ -66,7 +66,7 @@ $ calculations (typically 1024 1024 but must be a power of 2)
 $ (11) the model thickness (in km), number of points in the z direction, thermal diffusivity in km2/Myr,
 $ temperature at the base of the model (in C), temperature at z=0 (in C), atmospheric lapse rate (in
 $ C/km), heat production in C/My
-25.,31,25.,550,0.,0.,0.
+35.,21,25.,500,0.,0.,0.
 
 $ (12) name of the file containing the thermochronological data
 $ if Nil no date
@@ -74,15 +74,16 @@ $ otherwise it should contain the number of data points (locations)
 $ for each location a line containing sample longitude, latitude, elevation
 $ as well as Apatite He age, error in age, Apatite FT age, error in age
 $ with a negative age corresponding to a non-existing age
-Whataroa_synthetic.txt
+KingsCanyon_synthetic.txt
 
 $ (13) the default age (in Myr) for rocks that never reach the closure temperature, a flag to decide which 
 $ apatite FT routine to use (0 = van der Beek or 1 = Ketcham), a flag to decide whether (flag=0) to use the absolute
 $ age difference (between observed and predicted ages) to construct the misfit function or (flag=1) the difference in
 $ the slope of the age-elevation relationship (for each system), a flag to decide whether (flag=0) the faults'geometry
-$ is updated due to the movement on other faults or (flag=1) not
-100 1 0 0 0
+$ is updated due to the movement on other faults or (flag=1) not, a friction coefficient to use in the formula for shear heating
+$ (friction=0 means no shear heating)
+0 1 0 0 0
 
 $ (14) a series of 9 flags to determine which age (system) has to be computed from the thermal histories
 $ computed in Pecube
-0 0 1 0 0 0 0 0 0
+1 1 1 1 1 1 1 1 1

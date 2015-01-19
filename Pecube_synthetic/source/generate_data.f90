@@ -50,13 +50,16 @@ subroutine generate_data(rho, age, zeta, pdf, vals, sampleid, mtl)
   ! For Nc crystals, generate synthetic Ns and Ni count data using binomial 
   ! distribution, conditional on total counts Ns + Ni
   do I = 1, Nc
-    NsNi = int(ran3(SEED)*1000.0)
+    NsNi = 0
+    do while (NsNi == 0)
+      NsNi = int(ran3(SEED)*1000.0)
+    end do
     Ns(I) = 0
-    nloop = 0
-      
-    Ns(I) = int(bnldev(prob, NsNi, SEED))
-    Ni(I) = NsNi - Ns(I)
-  
+    do while (Ns(I) == 0)
+      Ns(I) = int(bnldev(prob, NsNi, SEED))
+      if(Ns(I) == 0) print*, Ns(I), NsNi
+      Ni(I) = NsNi - Ns(I)
+    end do
   end do
 
   ! Calculate central age
@@ -73,7 +76,7 @@ subroutine generate_data(rho, age, zeta, pdf, vals, sampleid, mtl)
 
   write(str,'(i3)') sampleid
   open(66, file="RUN00/SyntheticData/Sample"//trim(adjustL(str))//".mtx", status="unknown")
-!  write(*,*) "Central age = ", centage, " Input age = ", age
+  write(*,*) "Sample"//trim(adjustL(str))//" Central age = ", centage, " Input age = ", age
 
   ! Write the name of the sample
   write(66,*) "Sample"//trim(adjustL(str))
@@ -102,6 +105,22 @@ subroutine generate_data(rho, age, zeta, pdf, vals, sampleid, mtl)
   end do
   
   close(66)
+
+!  ! Write QTQT file
+!  open(66, file="RUN00/SyntheticData/Sample"//trim(adjustL(str))//".qtqt", status="unknown")
+!
+! !Line 1
+! write(66,'(a)') "Sample"//trim(adjustL(str))
+! 
+! !Line 2
+! LAT = 0.0 ; LON = 0.0; ELEVATION = 0.0
+! write(string(1),'(f10.2)') LAT
+! write(string(2),'(f10.2)') LON
+! write(string(3),'(f10.0)') ELEVATION
+! write(66,'(a,1x,a,1x,a)') (trim(adjustL(string(I))),I=1,3)
+! 
+!
+! close(66)
   deallocate(Ni)
   deallocate(Ns)
   deallocate(TL)
@@ -368,7 +387,6 @@ subroutine random_from_distrib(pdf, vals, X, N)
   end do
 
 end subroutine random_from_distrib
-
 
 
 end subroutine

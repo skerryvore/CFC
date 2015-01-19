@@ -56,6 +56,7 @@ subroutine calculate_ages (nrec,nsurf,nz,istep,age1,age2,age3,age4,age5,age6,age
   age7=0.
   age8=0.
 
+      open(345, file="test.txt", status="unknown")
   do i=1,nsurf
     ij=(i-1)*nz+1
     do irec=1,nrec
@@ -71,7 +72,9 @@ subroutine calculate_ages (nrec,nsurf,nz,istep,age1,age2,age3,age4,age5,age6,age
 	ztime_3(irec)=ztime(nrec-irec+1) !MOD VKP
 	if (ztemp(nrec-irec+1).gt.500) ztemp(nrec-irec+1)=500
 	ztemp_3(irec)=ztemp(nrec-irec+1) !MOD VKP
+        write(345,*) ztime_3(irec), ztemp_3(irec)
       enddo
+      write(345,*) "============================"
       alo = 16.0_c_double !RB
       final_age = 0
       fmean = 0
@@ -125,6 +128,9 @@ subroutine calculate_ages (nrec,nsurf,nz,istep,age1,age2,age3,age4,age5,age6,age
     age7(i)=age7(i)+timenow
     age8(i)=age8(i)+timenow
   enddo
+      close(345)
+
+  write(*,*) "Min age:", minval(age3), "Max age: ", maxval(age3)
 
   deallocate (ztime,ztime_3,ztemp,ztemp_3,depth)
 

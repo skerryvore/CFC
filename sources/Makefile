@@ -4,7 +4,7 @@
 
 FLAGS = -g -L./LIB/shapelib-1.3.0/ -lshp -lgdal -I/usr/include -c -O \
 -fbounds-check \
--fcheck-array-temporaries \
+#-fcheck-array-temporaries \
 -Wall \
 -Wunused-parameter
 

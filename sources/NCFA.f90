@@ -7,12 +7,9 @@ use utilities
 
 implicit none
   include "mpif.h"
-  integer,parameter :: LU_input=31
   integer,parameter :: LU_param=32
   integer,parameter :: LU_data=33
   integer,parameter :: LU_output=34
-  integer,parameter :: LU_dem=35
-  integer,parameter :: LU_flt=36
   integer,parameter :: LU_dummy=37
   integer,parameter :: nrow=9
   integer (kind = 4) :: nt2
@@ -31,8 +28,6 @@ implicit none
   integer :: i,j,io,kk,L,K,M, kk2
   real(kind=r8),allocatable,dimension(:,:) :: distances
   integer,allocatable,dimension(:,:) :: dem_topo,flt_topo
-  integer :: nx_dem,ny_dem
-  integer :: nx_dem_flt,ny_dem_flt
   real(kind=r8) :: rlon1,rlat1,rlon2, rlat2
   real(kind=r4)  :: range(2,1024)
   integer :: nd
@@ -303,12 +298,12 @@ implicit none
                       real(sample(I)%lat,kind=c_double),&
                       "./DEM/"//trim(adjustL(dem_file))//C_NULL_CHAR,&
                       elevation) 
-    sample(I)%flt_elevation = real(elevation)    
+    sample(I)%dem_elevation = real(elevation)    
     call getElevation(real(sample(I)%lon,kind=c_double),&
                       real(sample(I)%lat,kind=c_double),&
                       "./DEM/"//trim(adjustL(filtered_file))//C_NULL_CHAR,&
                       elevation) 
-    sample(I)%dem_elevation = real(elevation)
+    sample(I)%flt_elevation = real(elevation)
   enddo
 
   open(16, file="./DEM/Elevation_compare.txt",status='unknown')
@@ -760,12 +755,12 @@ implicit none
     ! Create the .prj file associated to the shapefile
     ! The coordinate system is identical to the input topography file so
     ! we just need to copy the information from the topo.prj
-    open(71,file="./DEM/"//trim(adjustL(dem_file(1:index(dem_file,".asc",.false.)))//"prj"),status='old')
-    read(71,'(a)') line
-    close(71)
-    open(71,file="Temp"//trim(adjustL(filename))//".prj",status="Unknown")
-    write(71,'(a)') trim(adjustL(line))
-    close(71)
+    !open(71,file="./DEM/"//trim(adjustL(dem_file(1:index(dem_file,".asc",.false.)))//"prj"),status='old')
+    !read(71,'(a)') line
+    !close(71)
+    !open(71,file="Temp"//trim(adjustL(filename))//".prj",status="Unknown")
+    !write(71,'(a)') trim(adjustL(line))
+    !close(71)
 
     ! Create a dbf file
     do I = 1, ndata
@@ -793,7 +788,6 @@ implicit none
 
 
   ! close files
-  close(LU_input)
   close(LU_param)
   close(LU_output)
   call MPI_FINALIZE(ierr)
@@ -1244,7 +1238,7 @@ end
       
       300 format(8a10)
       301 format(a10, 2f10.1, 3i10, 2f10.1)
-      302 format(E10.1,100f10.1)
+      302 format(E15.8,100f10.1)
 
       return
     end subroutine

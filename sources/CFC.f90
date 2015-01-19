@@ -86,81 +86,7 @@ implicit none
   real(kind=c_double) :: elevation
   real(kind=c_double) :: rx, ry
 
-
-  interface 
-    subroutine ketch_main(ntime, ketchtime, ketchtemp, alo, final_age, oldest_age, fmean, fdist) bind(C, name="ketch_main_")
-      use iso_c_binding
-      implicit none
-      integer(kind=c_int) :: ntime
-      real(kind=c_float) :: ketchtime(*)
-      real(kind=c_float) :: ketchtemp(*)
-      real(kind=c_double ) :: alo, final_age, oldest_age, fmean
-      real(kind=c_double ) :: fdist(200)
-    end subroutine
-  end interface
-
-  interface
-    subroutine create_shape_points(nSHPType, pszfilename, sampx, sampy, nsamp) bind(C,name="CSHPpoints")
-      use iso_c_binding
-      implicit none
-      integer(kind=c_int),value :: nSHPType
-      character(kind=c_char), dimension(*) :: pszfilename
-      real(kind = c_double), dimension(*) :: sampx, sampy
-      integer(kind=c_int),value :: nsamp 
-    end subroutine
-  end interface  
-
-  interface
-    subroutine createDBF(dbffilename, id, nsamp, sampx, sampy, sampz, sampname &
-                   &, temp, ERate, Geo, ExRate, Ftage) bind(C, name="createDBF")
-      use iso_c_binding
-      character(kind=c_char), dimension(*) :: dbffilename
-      integer(kind=c_int), value :: nsamp
-      integer(kind=c_int), dimension(*) :: id
-      real(kind = c_double), dimension(*) ::  sampx, sampy, sampz, temp, ERate
-      real(kind = c_double), dimension(*) ::  Geo, ExRate, Ftage
-      type(c_ptr), dimension(*) :: sampname
-    end subroutine
-  end interface
-  
-  interface
-    subroutine create_tiff(tiffname, ulcorner, vals, nx, ny, utm, geoid) bind(c, name="create_tiff")
-      use iso_c_binding
-      implicit none
-      character(kind=c_char), dimension(*) :: tiffname
-      real(kind = c_double), dimension(6) :: ulcorner
-      integer(kind = c_int), dimension(*) :: vals
-      integer(kind = c_int), value :: nx, ny, utm
-      character(kind=c_char), dimension(*) :: geoid 
-    end subroutine
-  end interface
-  
-  interface 
-    subroutine getElevation(dfGeox, dfGeoY, Filename, elevation) bind(C, name="getElevation")
-      use iso_c_binding
-      implicit none
-      real(kind=c_double ) :: dfGeoX, dfGeoY
-      character(kind=c_char) :: Filename(*)
-      real(kind=c_double) :: elevation
-    end subroutine
-  end interface
- 
-  interface 
-    subroutine GetDistanceBetweenPoints(X1, Y1, X2, Y2, distance) bind(C, name="GetDistanceBetweenPoints")
-      use iso_c_binding
-      implicit none
-      real(kind=c_double ) :: X1,Y1,X2,Y2
-      real(kind=c_double) :: distance
-    end subroutine
-  end interface
-  
-  interface 
-    subroutine LatLon2UTM(X1, Y1, X2, Y2) bind(C, name="LatLon2UTM")
-      use iso_c_binding
-      implicit none
-      real(kind=c_double ) :: X1,Y1,X2,Y2
-    end subroutine
-  end interface
+  include "Cinterfaces.h"
   
   debug=.TRUE.
 
@@ -362,8 +288,8 @@ implicit none
 
           sample(I)%neighbours_MTL(kk)     = sample(J)%MTL
           sample(I)%neighbours_MTL_err(kk) = sample(J)%MTL_err
-          sample(I)%neighbours_offsets(kk) = sample(J)%dem_elevation-sample(J)%flt_elevation
-          sample(I)%neighbours_offsets(kk) = 0._r4
+          sample(I)%neighbours_offsets(kk) = sample(J)%dem_elevation-sample(J)%flt_elevation&
+                                           - (sample(I)%dem_elevation - sample(I)%flt_elevation)
         endif
       end do
 
@@ -408,8 +334,8 @@ implicit none
 
         sample(I)%neighbours_MTL(kk)     = sample(idx(K))%MTL
         sample(I)%neighbours_MTL_err(kk) = sample(idx(K))%MTL_err
-        sample(I)%neighbours_offsets(kk) = sample(idx(K))%dem_elevation-sample(idx(K))%flt_elevation
-        sample(I)%neighbours_offsets(kk) = 0._r4
+        sample(I)%neighbours_offsets(kk) = sample(idx(K))%dem_elevation-sample(idx(K))%flt_elevation&
+                                         - (sample(I)%dem_elevation - sample(I)%flt_elevation)
 
         if(.not.BOREHOLE) ncsamp = ncsamp + 1
         K = K + 1
@@ -537,10 +463,11 @@ implicit none
 
         sample(I)%neighbours_MTL(L)     = sample(J)%MTL
         sample(I)%neighbours_MTL_err(L) = sample(J)%MTL_err
-        sample(I)%neighbours_offsets(L) = sample(J)%dem_elevation-sample(J)%flt_elevation
-        sample(I)%neighbours_offsets(L) = 0._r4
-      end do
-
+        sample(I)%neighbours_offsets(L) = sample(J)%dem_elevation-sample(J)%flt_elevation&
+                                        - (sample(I)%dem_elevation - sample(I)%flt_elevation)          
+        print*, sample(I)%neighbours_offsets(L)
+       end do
+     
     end do
 
 

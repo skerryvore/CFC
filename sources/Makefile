@@ -21,7 +21,7 @@ modules.o \
 na.o \
 Ketcham.o \
 read_mtx.o \
-NCFA.o \
+CFC.o \
 shape.o \
 dbf.o \
 gdal.o \

@@ -39,6 +39,7 @@ module CFC
     real(kind=r4) :: MTL_std
     real(kind=r4) :: stdev
     real(kind=r4) :: stdev_err
+    real(kind=r4) :: offset
     integer :: NS(100)
     integer :: NI(100)
     real(kind=r4) :: TL(400)
@@ -86,7 +87,7 @@ use precision_kind
 integer,parameter :: NSAMPLEMAX=100
 integer,parameter :: NCOUNTMAX=100
 integer,parameter :: NTLMAX=400
-real(kind=r4)  :: fwd_offsets(NSAMPLEMAX)
+real(kind=r4)  :: fwd_offsets(NSAMPLEMAX+1)
 integer  :: fwd_ndata
 integer  :: fwd_NS(NSAMPLEMAX,NCOUNTMAX)
 integer  :: fwd_NI(NSAMPLEMAX,NCOUNTMAX)

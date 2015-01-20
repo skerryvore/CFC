@@ -5,14 +5,19 @@ import pylab as plt
 from matplotlib.collections import LineCollection
 import argparse
 from itertools import islice
+from matplotlib import cm
+from mpl_toolkits.mplot3d import Axes3D
+import gdal
 
 __author__ = "Romain Beucher"
 
 
-def helfrag_plot(filename="./RUN00/NA_HELFRAG_results_step1.txt", threshold=150,range_time=[0,500], range_temp=[0,150],skip=0):
+def helfrag_plot(filename="./RUN00/NA_HELFRAG_results_step1.txt",range_time=[0,500], range_temp=[0,150],skip=0):
 
     data=np.genfromtxt(filename, skip_header=skip+1)
-   
+    reject = 1e21
+    data = data[data[:,0] < reject]
+
     # Sort the data
     data = data[data[:,0].argsort()]
     # Reverse sort
@@ -28,24 +33,28 @@ def helfrag_plot(filename="./RUN00/NA_HELFRAG_results_step1.txt", threshold=150,
         x = np.append(x,0)
         y = data[i,4:8]
         d = tuple(zip(x,y))
-        if(data[i,0] < threshold): color="blue"
-        if(data[i,0] > threshold): color="gray"
         v.append(d)
-        colors.append(color)
     
-    line_segments=LineCollection(v,colors=colors)
+    line_segments=LineCollection(v)
     
     x = data[-1,1:4]
     x = np.append(x,0)
     y = data[-1,4:8]
 
-    return line_segments, x, y
+    misfits = data[:,0]
+
+    return line_segments, x, y, misfits
 
 
 def NA_convergence(filename="./RUN00/NA_HELFRAG_results_step1.txt",skip=0):
 
     data=np.genfromtxt(filename,skip_header=skip+1)
-    return data[:,1]
+    threshold = 1e21
+    num = np.zeros((len(data[:,0]),1))
+    num[:,0] = range(1,len(data[:,0])+1)
+    data = np.hstack((data,num))
+    data = data[data[:,0] < threshold]
+    return data[:,0], data[:,-1]
 
 def find_line(filename, string):
 
@@ -60,13 +69,13 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='Script by Romain Beucher')
     parser.add_argument('-f','--filename', help = 'NA Result file',  required=True)
-    parser.add_argument('-t','--threshold', help = 'threshold',  required=True)
+    parser.add_argument('-o','--output', help = 'NA Result file',  required=True)
     parser.add_argument('-rt1','--range_time', help = 'time range',  required=False)
     parser.add_argument('-rt2','--range_temp', help = 'temp range',  required=False)
     args = parser.parse_args()
 
     filename = args.filename
-    threshold = int(args.threshold)
+    output = args.output
     range_time = args.range_time
     range_temp = args.range_temp
 
@@ -74,17 +83,22 @@ if __name__ == "__main__":
     range_time = [0,500]
     range_temp = [0,150]
 
-    skip = find_line(filename, "List of")
+    skip = find_line(filename, "List of") + 3
 
-    line_segments, xbest, ybest = helfrag_plot(filename, threshold, range_time, range_temp,skip)
+    line_segments, xbest, ybest, mvals = helfrag_plot(filename, range_time, range_temp,skip)
 
-   
-    ax = plt.subplot2grid((2,4),(0,0),colspan=2)
+    line_segments.set_array(mvals)
+    line_segments.set_cmap(cm.coolwarm)
+    line_segments.set_alpha(0.3)
+    ax = plt.subplot()
     ax.set_xlim(0,500)
     ax.set_ylim(0,150)
     ax.add_collection(line_segments)
+    fig =plt.gcf()
+    axcb = fig.colorbar(line_segments)
     plt.plot(xbest,ybest,color="red", linewidth=2)
-    
+    plt.title(filename)
+
     plt.xlim(range_time)
     plt.ylim(range_temp)
     plt.xlabel(r'Time (Ma)')
@@ -92,29 +106,26 @@ if __name__ == "__main__":
     plt.gca().invert_xaxis()
     plt.gca().invert_yaxis()
    
-    misfits = NA_convergence(filename,skip)
-    plt.subplot2grid((2,4),(1,0),colspan=2)
-    plt.xlim([0,len(misfits)])
-    plt.ylim([0,max(misfits)])
-    plt.plot(misfits)
-
-
+    a = plt.axes([0.15, 0.67,0.2,0.2], axisbg="w")
+    misfits, indexes = NA_convergence(filename,skip)
+    plt.plot(indexes, misfits)
+    plt.setp(a, xticks=[], yticks=[])
 
     # Get number of samples:
     f = open(filename, 'r')
     string = f.readline()
     nsamples = int(string.split(sep=":")[-1])
     num_lines = sum(1 for line in f)
-    samples = np.genfromtxt(filename, skip_header=2, skip_footer=num_lines-nsamples-1,dtype=None)
-    
-    ages = []
-    elevation = []
-    for sample in samples:
-        ages.append(sample[4])
-        elevation.append(sample[3])
+    dtypes=[('Name', 'S10'), ('Lat', 'f'), ('Lon', 'f'), ('Elevmeas', 'i'), ('Elevdem', 'i'), ('Elevfilt', 'i'),('FTage', 'f'), ('MTL', 'f')]
+    samples = np.genfromtxt(filename, skip_header=4, skip_footer=num_lines-(nsamples+3),dtype=None)
 
-    plt.subplot2grid((2,4),(0,2), colspan=2, rowspan=2)
-    plt.plot(ages,'o')
+    if(output == "screen"):
+        plt.show()
 
-    plt.show()
+    if(output == "file"):
+        string=filename
+        string=string.split(sep=".")[0]
+        plt.savefig(string+".png")
+
+
 

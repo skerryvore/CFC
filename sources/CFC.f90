@@ -26,6 +26,7 @@ implicit none
   integer :: ndata
   integer :: icol
   integer :: i,j,io,kk,L,K,M, kk2
+  integer :: candidate, ncandidates
   real(kind=r8),allocatable,dimension(:,:) :: distances
   integer,allocatable,dimension(:,:) :: dem_topo,flt_topo
   real(kind=r8) :: rlon1,rlat1,rlon2, rlat2
@@ -58,6 +59,7 @@ implicit none
   integer :: sampleid
   CHARACTER(LEN=100), DIMENSION(200), TARGET :: stringArray
   TYPE(C_PTR), DIMENSION(200) :: stringPtrs
+  real(kind=r4) :: MAXSEARCHRADIUS
 
   ! List of variables used by TRIPACK
   integer(kind = 4), dimension(:), allocatable :: LIST, LPTR, LEND, NEAR, NEXT
@@ -139,6 +141,7 @@ implicit none
   end do
 
   circle=circle*1000 ! Convert to m 
+  geotherm = geotherm / 1000._r8
 
   ! open sample file list
   open(LU_data,file='./data/'//trim(adjustL(data_file)), status='unknown')
@@ -230,6 +233,7 @@ implicit none
                       "./DEM/"//trim(adjustL(filtered_file))//C_NULL_CHAR,&
                       elevation) 
     sample(I)%flt_elevation = real(elevation)
+    sample(I)%offset = sample(I)%flt_elevation - sample(I)%dem_elevation 
   enddo
 
   open(16, file="./DEM/Elevation_compare.txt",status='unknown')
@@ -288,8 +292,7 @@ implicit none
 
           sample(I)%neighbours_MTL(kk)     = sample(J)%MTL
           sample(I)%neighbours_MTL_err(kk) = sample(J)%MTL_err
-          sample(I)%neighbours_offsets(kk) = sample(J)%dem_elevation-sample(J)%flt_elevation&
-                                           - (sample(I)%dem_elevation - sample(I)%flt_elevation)
+          sample(I)%neighbours_offsets(kk) = sample(J)%offset
         endif
       end do
 
@@ -314,7 +317,6 @@ implicit none
 
         kk = sample(I)%nneighbours
         sample(I)%neighbours(kk)         = idx(K)
-        print*, idx(k)
         sample(I)%neighbours_ncounts(kk) = sample(idx(K))%ncounts
         sample(I)%neighbours_zeta(kk)    = sample(idx(K))%zeta
         sample(I)%neighbours_rhodos(kk)  = sample(idx(K))%rhod
@@ -334,8 +336,7 @@ implicit none
 
         sample(I)%neighbours_MTL(kk)     = sample(idx(K))%MTL
         sample(I)%neighbours_MTL_err(kk) = sample(idx(K))%MTL_err
-        sample(I)%neighbours_offsets(kk) = sample(idx(K))%dem_elevation-sample(idx(K))%flt_elevation&
-                                         - (sample(I)%dem_elevation - sample(I)%flt_elevation)
+        sample(I)%neighbours_offsets(kk) = sample(idx(K))%offset
 
         if(.not.BOREHOLE) ncsamp = ncsamp + 1
         K = K + 1
@@ -438,9 +439,21 @@ implicit none
 
     do I=1, ndata
 
-      call find_node_neighbors(I,LIST, LPTR, LEND, NABOR, kk)
-      sample(I)%nneighbours            = kk
-      sample(I)%neighbours(1:kk)       = NABOR(1:kk)
+      call find_node_neighbors(I,LIST, LPTR, LEND, NABOR, ncandidates)
+
+      ! Exclude neighbors beyond MAXSEARCHRADIUS
+      MAXSEARCHRADIUS = 25._r4 * 1000._r4
+      KK = 0
+      do L = 1, ncandidates
+        candidate = NABOR(L)
+        if(distances(I,candidate).lt.MAXSEARCHRADIUS) then
+          KK = KK + 1
+          sample(I)%neighbours(KK) = candidate
+        end if
+      end do
+
+      sample(I)%nneighbours = KK
+
 
       do L=1, kk 
         J = sample(I)%neighbours(L) 
@@ -463,9 +476,8 @@ implicit none
 
         sample(I)%neighbours_MTL(L)     = sample(J)%MTL
         sample(I)%neighbours_MTL_err(L) = sample(J)%MTL_err
-        sample(I)%neighbours_offsets(L) = sample(J)%dem_elevation-sample(J)%flt_elevation&
-                                        - (sample(I)%dem_elevation - sample(I)%flt_elevation)          
-        print*, sample(I)%neighbours_offsets(L)
+        sample(I)%neighbours_offsets(L) = sample(J)%offset
+
        end do
      
     end do
@@ -585,7 +597,6 @@ implicit none
           call ketch_main(int(ttpoints,c_int),ktime,ktemp,alo,kAFTA,kOld,kMTL,kFTLD)
 
           AFTA = real(kAFTA,r4)
-          print*, AFTA, sample(I)%FTage
           FTLD = real(kFTLD,r4)
           MTL  = real(kMTL, r4)
 
@@ -1165,7 +1176,7 @@ end
       
       300 format(8a10)
       301 format(a10, 2f10.1, 3i10, 2f10.1)
-      302 format(E15.8,100f10.1)
+      302 format(E20.10,100f10.1)
 
       return
     end subroutine

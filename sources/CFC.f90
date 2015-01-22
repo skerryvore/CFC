@@ -36,7 +36,6 @@ implicit none
   logical :: file_exists
   integer :: nmaps, ncsamp, ncloc
   real(kind=r4), dimension(:),allocatable :: maps 
-  real(kind=r4) :: interp1
   real(kind=r4) :: dt
   real(kind=r4) :: mfitmin
   real(kind=r4) :: model_opt(50)
@@ -57,6 +56,7 @@ implicit none
   real(kind=r4), dimension(:), allocatable :: sorted_distances
   integer, dimension(:), allocatable :: idx
   integer :: sampleid
+  integer :: A, B, C, D, E, F
   CHARACTER(LEN=100), DIMENSION(200), TARGET :: stringArray
   TYPE(C_PTR), DIMENSION(200) :: stringPtrs
   real(kind=r4) :: MAXSEARCHRADIUS
@@ -212,7 +212,8 @@ implicit none
                   &sample(I)%TL,&
                   &sample(I)%s2name)
   enddo
-  
+
+
   ! Get UTM Coordinates
   do I=1,ndata
     call LatLon2UTM(real(sample(I)%lon, kind=c_double),&
@@ -392,9 +393,24 @@ implicit none
 
     prntx = .true.
     allocate(ltri(nrow,2*ndata-5))
-    call trprnt ( ncc, lcc, ndata, sample%x, sample%y, list, lptr, lend, prntx )
+    !call trprnt ( ncc, lcc, ndata, sample%x, sample%y, list, lptr, lend, prntx )
     call trlist ( ncc, lcc, ndata, list, lptr, lend, nrow, nt2, ltri, lct, ier )
-    call trlprt ( ncc, lct, ndata, sample%x, sample%y, nrow, nt2, ltri, prntx )
+    open(78, file="list_triangulation.txt", status="unknown")
+    do I = 1, ndata
+      write(78,*) ltri(1:6,I)
+    end do
+    close(78)
+    open(78, file="list_segments.txt", status="unknown")
+    do I = 1, nt2
+      A = ltri(1,I)
+      B = ltri(2,I)
+      C = ltri(3,I)
+      write(78,*) sample(A)%lat, sample(A)%lon, sample(B)%lat, sample(B)%lon
+      write(78,*) sample(B)%lat, sample(B)%lon, sample(C)%lat, sample(C)%lon
+      write(78,*) sample(C)%lat, sample(C)%lon, sample(A)%lat, sample(A)%lon
+    end do
+    close(78)
+    !call trlprt ( ncc, lct, ndata, sample%x, sample%y, nrow, nt2, ltri, prntx )
     deallocate(ltri)
 
     ! Create an EPS file image of the triangulation
@@ -514,7 +530,7 @@ implicit none
      & trim(sample(I)%s1name),"with ID: ", I,"(N=",sample(I)%nneighbours,")"
    
     ! Initialize all arrays (Must be done before doing calculation) 
-   
+    kk                = sample(I)%nneighbours 
     fwd_ages(1:kk)    = sample(I)%neighbours_ages(1:kk)
     fwd_ndata         = sample(I)%nneighbours
     fwd_MTL(1:kk)     = sample(I)%neighbours_MTL(1:kk)
@@ -523,7 +539,7 @@ implicit none
     fwd_zeta(1:kk)    = sample(I)%neighbours_zeta(1:kk)
     fwd_rhodos(1:kk)  = sample(I)%neighbours_rhodos(1:kk)
     fwd_ntl(1:kk)     = sample(I)%neighbours_ntl(1:kk)
- 
+
     do J=1,fwd_ndata
 
       do k=1,fwd_ncounts(J)
@@ -590,7 +606,7 @@ implicit none
           L = 1
           do M = ttpoints,1,-1
             ktime(M) = abs(sample(J)%bestpath(1,L) - sample(J)%bestpath(1,ttpoints))
-            ktemp(M) = sample(J)%bestpath(2,L) + sample(J)%neighbours_offsets(K) * sample(J)%bestgeotherm
+            ktemp(M) = sample(J)%bestpath(2,L) - sample(J)%neighbours_offsets(K) * sample(J)%bestgeotherm
             L = L + 1
           end do
 
@@ -739,12 +755,14 @@ subroutine forward(nd,NA_param,misfit)
   use fwd
   use qsort_c_module
   use utilities
+  use AHistory
   use iso_c_binding
 
   implicit none
   integer :: I,J,K
-  integer,parameter :: NPOINTS=4
+  integer :: NPOINTS
   integer :: nd
+  integer :: A, B
   real(kind=r4) :: TIME(4),TEMP(4),ORDERED_TIME_SEQ(4)
   real(kind=r4) :: ftage(500),ftldistrib(500,200),ftldmean(500)  
   real(kind=r4) :: NA_param(nd)
@@ -753,8 +771,9 @@ subroutine forward(nd,NA_param,misfit)
   real(kind=r4) :: LKH_TLDistrib(NSAMPLEMAX) 
   real(kind=r4) :: LKH_sample(NSAMPLEMAX)
   real(kind=r4) :: total_LKH
+  real(kind=r4) :: surface_temperature
 
-  real(kind=c_float) :: ketcham_time(4),ketcham_temp(4)
+  real(kind=c_float),dimension(:), allocatable :: ketcham_time,ketcham_temp
   real(kind=c_double) :: ketcham_ftage,ketcham_ftldistrib(200),ketcham_ftldmean
   real(kind=c_double) :: oldest_age
   real(kind=c_double),parameter :: alo=16.3
@@ -770,6 +789,8 @@ subroutine forward(nd,NA_param,misfit)
       real(kind=c_double ) :: fdist(200)
     end subroutine
   end interface
+
+  NPOINTS = 4
 
   TIME(1:3)=NA_param(1:3)
   TIME(4)=500._r4
@@ -800,9 +821,19 @@ subroutine forward(nd,NA_param,misfit)
     endif
   enddo
 
+  ! Save surface temperature
+  surface_temperature = TEMP(NPOINTS)
+
   !========== Calculate fission track ages
   LKH_FTAGE=1000000._4            
   do K=1,fwd_ndata
+   
+    ! Need to update Npoints as it may be changed by AdjustHistory 
+    NPOINTS = 4 
+    allocate(Ketcham_time(2*NPOINTS))
+    allocate(Ketcham_temp(2*NPOINTS))
+
+
     ! Calculation is done for each sample in the circle as they have different offsets.
     J=1
     do I=NPOINTS,1,-1
@@ -811,13 +842,19 @@ subroutine forward(nd,NA_param,misfit)
       J=J+1
     enddo
 
-    call ketch_main(NPOINTS,ketcham_time,ketcham_temp,real(alo,8),&
-      &ketcham_ftage,oldest_age,ketcham_ftldmean,ketcham_ftldistrib)
+    call AdjustHistory(ketcham_time, ketcham_temp, surface_temperature, NPOINTS)
+
+    call ketch_main(NPOINTS,ketcham_time,ketcham_temp,&
+                    real(alo,8),ketcham_ftage,oldest_age,ketcham_ftldmean,&
+                    ketcham_ftldistrib)
+
+    deallocate(Ketcham_time)
+    deallocate(Ketcham_temp)
 
     ftage(K)=real(ketcham_ftage,4)
     ftldistrib(K,:)=real(ketcham_ftldistrib*100.,4)
     ftldmean(K)=real(ketcham_ftldmean,4)
-
+    
     if(fwd_ncounts(K).ne.0) then
       call loglike_FT(ftage(K), ftldmean(K), fwd_zeta(K), fwd_rhodos(K),&
          &  fwd_ns(K,:), fwd_ni(K,:), fwd_ncounts(K), LKH_FTAGE(K))
@@ -830,6 +867,8 @@ subroutine forward(nd,NA_param,misfit)
     ! Calculate misfit age if no count data (to be implemented)
     ! Calculate misfit mean TL if no TL measurements (to be implemented)
     LKH_sample(K)=LKH_TLDistrib(K)+LKH_FTAGE(K)
+
+    !print*, LKH_FTage(K), LKH_TLDistrib(K), LKH_sample(K), fwd_ncounts(K)
   enddo
 
   !Total likelihood is just the sum of the individual Likelihood.
@@ -839,454 +878,173 @@ subroutine forward(nd,NA_param,misfit)
 end subroutine forward
 
 
-!*************************************************************************
-!/*
-! * Peter Daly
-! * MIT Ocean Acoustics
-! * pmd@mit.edu
-! * 25-MAY-1998
-! * 
-! Revisions:
-!   Jan. 25, 1999 DHG  Port to Fortran 90
-!   Mar. 23, 1999 DHG  To add Lewis Dozier's fix to "rr1" calculation 
-! * 
-! Description:
-! * 
-! * These routines convert UTM to Lat/Longitude and vice-versa,
-! * using the WGS-84 (GPS standard) or Clarke 1866 Datums.
-! * 
-! * The formulae for these routines were originally taken from
-! * Chapter 10 of "GPS: Theory and Practice," by B. Hofmann-Wellenhof,
-! * H. Lictenegger, and J. Collins. (3rd ed) ISBN: 3-211-82591-6,
-! * however, several errors were present in the text which
-! * made their formulae incorrect.
-! *
-! * Instead, the formulae for these routines was taken from
-! * "Map Projections: A Working Manual," by John P. Snyder
-! * (US Geological Survey Professional Paper 1395)
-! *
-! * Copyright (C) 1998 Massachusetts Institute of Technology
-! *               All Rights Reserved
-! *
-! * RCS ID: $Id: convert_datum.c,v 1.2 1998/06/04 20:50:47 pmd Exp pmd $
-! */
+!---------------------------------------------------------------------------------------------------
+
+subroutine user_init (nd,range,scales)
+
+  use precision_kind
+  implicit none
+
+  real(kind=r4),intent(in) :: range(2,*)
+  real(kind=r4),intent(out) :: scales(*)
+  integer,intent(in) :: nd
+
+  scales(1:nd)=-1.
+
+  return
+end subroutine
+
+!---------------------------------------------------------------------------------------------------
+subroutine writemodels (nd,ntot,models,misfit,ns1,ns2,itmax, &
+    nh_max,nh,header)
+
+  use precision_kind
+  use fwd
+  use CFC
+
+  implicit none
+
+  integer :: nd
+  integer :: ntot
+  integer :: ns1
+  integer :: ns2
+  integer :: itmax
+  integer :: nh_max
+  integer :: nh
+  integer :: i
+  integer :: k
+  integer :: idx
+
+  real(kind=r4) :: models (nd,*)
+  real(kind=r4) :: misfit (ntot)
+  character*(*) header
+  character*5 :: tempo
+
+
+  write(tempo,'(i5)') model_id
+  open (87,file='./results/'//trim(adjustL(run_name))//'/NA_results_sample'//trim(adjustL(tempo))//'.txt',status='unknown')
+  write (87,*) "Total number of samples:", sample(model_id)%nneighbours + 1
+  write (87,'(80a)') ("-", I = 1, 80)
+  write (87,300) "Name", "lat", "lon","XUTM", "YUTM", "Elev.meas", "Elev.dem","Elev.flt","FTage", "MTL"
+  write (87,'(80a)') ("-", I = 1, 80)
+  write (87,301)   sample(model_id)%s1name,&
+    sample(model_id)%lat,&
+    sample(model_id)%lon,&
+    sample(model_id)%x,&
+    sample(model_id)%y,&
+    int(sample(model_id)%measured_elevation),&
+    sample(model_id)%dem_elevation,&
+    sample(model_id)%flt_elevation,&
+    sample(model_id)%FTage,&
+    sample(model_id)%MTL
+
+  do i=1,sample(model_id)%nneighbours
+
+    idx = sample(model_id)%neighbours(i)
+    write (87,301) sample(idx)%s1name,&
+      sample(idx)%lat,&
+      sample(idx)%lon,&
+      sample(idx)%x,&
+      sample(idx)%y,&
+      int(sample(idx)%measured_elevation),&
+      sample(idx)%dem_elevation,&
+      sample(idx)%flt_elevation,&
+      sample(idx)%FTage,&
+      sample(idx)%MTL
+  end do
+
+
+  write (87,'(80a)') ("-", I = 1, 80)
+  write (87, *) "Model with lowest misfit"
+  write (87, 302) sample(model_id)%optimum_LKH, sample(model_id)%optimum_path(1,1:3), sample(model_id)%optimum_path(2,:)   
+  write (87,'(80a)') ("-", I = 1, 80)
+  write (87, *) "List of models" 
+  write (87,'(80a)') ("-", I = 1, 80)
+
+  write (87, 300) "Misfit", "t1", "t2", "t3", "T1", "T2", "T3", "T4" 
+  write (87,'(80a)') ("-", I = 1, 80)
+  do i=1,ntot
+
+    write (87,302) misfit(i),(models(k,i),k=1,nd)
+
+  enddo
+  close (87)
+
+  300 format(10a10)
+  301 format(a10, 2f15.8,2f12.1, 3i10, 2f10.1)
+  302 format(E20.10,100f10.1)
+
+  return
+end subroutine
+
+
+!-----------------------------------------------------------------------
 !
-!*************************************************************************
+! subroutine loglike_FT
 !
-subroutine get_grid_zone (longitude, latitude, grid_zone, lambda0)
+! 
+! For fission track data, a natural choice of data fit is the log 
+! likelihood function given by Gallagher (1995). This is defined in terms of the
+! observed spontaneous and induced track counts, Nsj and Nij for each crystal j of
+! a total of Nc.   
+!
+subroutine loglike_FT(PredAFTA, PredMTL, zeta, rdos, ns, ni, nc, lkh)
+  use precision_kind
+  implicit none
 
-  IMPLICIT NONE
+  real(kind = r4), intent(in) :: PredAFTA, PredMTL, zeta, rdos
+  integer, intent(in) :: nc, ns(nc), ni(nc) 
+  real(kind = r4) :: lkh
 
-  real (kind=8) longitude, latitude
-  integer       grid_zone(2)
-  real (kind=8) lambda0
+  integer :: j
+  real(kind = r4), parameter :: U238_DECAYCT = 1.55125E-10, alo = 16.3
+  real(kind = r4) :: rsri, theta  
 
-  integer  zone_long, zone_lat
 
-  real (kind=8) M_PI
-  !!!   parameter (M_PI = 3.141592654)
+  ! 1) First, calculate rhos/rhoi from predicted age
+  rsri = (exp(U238_DECAYCT * PredAFTA * 1D6) - 1)
+  rsri = rsri * (2 * (PredMTL / alo)) / (U238_DECAYCT * zeta * rdos)
 
-  !-------------------------------------------------------------------------
+  ! 2) Calculate theta from rhos/rhoi
+  theta = rsri / (1 + rsri)
 
-  m_pi = ACOS (-1.0)
+  ! 3) Calculate log-likelihood using count data
+  lkh = 0._r4
+  do j = 1, nc
+    lkh = lkh + ns(j) * log(theta) + ni(j) * log(1 - theta)
+  end do
 
-  !  /* Solve for the grid zone, returns the central meridian */
+  !print*, "theta: ", theta, "logtheta: ", log(theta), log(1-theta), lkh
 
-  zone_long = INT ((longitude + 180.0) / 6.0) + 1
-  zone_lat = NINT ((latitude + 80.0) / 8.0)
-  grid_zone(1) = zone_long
-  grid_zone(2) = zone_lat
+end subroutine loglike_FT  
 
-  !  /* First, let's take care of the polar regions */
+!-----------------------------------------------------------------------
+!
+! subroutine loglike_TL
+subroutine loglike_TL(nx, ntl, tl, ftld, lkh)
+  use precision_kind
+  use utilities
 
-  if ((latitude < -80.0) .OR. (latitude > 84.0)) then
-    lambda0 = 0.0 * M_PI / 180.0
-    return
-  endif
+  implicit none
 
-  !  /* Now the special "X" grid */
+  integer, intent(in) :: nx,ntl 
+  real(kind = r4),intent(in) :: tl(ntl), ftld(nx)
+  real(kind = r4),intent(out) :: lkh 
 
-  if (latitude .GT. 72.0 .AND. &
-    longitude .GT. 0.0 .AND. longitude .LT. 42.0) then
-  if (longitude .LT. 9.0) then
-    lambda0 = 4.5 * M_PI / 180.0
-  elseif (longitude .LT. 21.0) then
-    lambda0 = 15.0 * M_PI / 180.0
-  elseif (longitude .LT. 33.0) then
-    lambda0 = 27.0 * M_PI / 180.0
-  elseif (longitude .LT. 42.0) then
-    lambda0 = 37.5 * M_PI / 180.0
-  endif
-  return
-endif
+  integer :: i, j
+  real(kind = r4) :: pdfx(nx) 
 
-!  /* Handle the special "V" grid */
+  do i = 1, nx
+    pdfx(i) = (i-1) * 0.1_r4
+  end do
 
-if (latitude .GT. 56.0 .AND. latitude .LT. 64.0 .AND. &
-  longitude .GT. 0.0 .AND. longitude .LT. 12.0) then
-if (longitude .LT. 3.0) then
-  lambda0 = 1.5 * M_PI / 180.0
-elseif (longitude .LT. 12.0) then
-  lambda0 = 7.5 * M_PI / 180.0
-endif
-return
-  endif
+  lkh = 0._r4
 
-  !  /* The remainder of the grids follow the standard rule */
+  do i = 1, ntl
+    j = locate(pdfx, tl(i))
+    lkh = lkh + log(ftld(j) / 100.0)
+  end do
 
-  lambda0 = (FLOAT (zone_long - 1) * 6.0 + (-180.0) + 3.0) * M_PI / 180.0
-
-  return
-  end
-
-  !*************************************************************************
-
-  subroutine get_lambda0 (grid_zone, lambda0, ierr)
-
-    IMPLICIT NONE
-
-    integer       grid_zone(2)
-    real (kind=8) lambda0
-    integer       ierr
-
-    integer zone_long
-    integer zone_lat
-    real (kind=8) latitude, longitude
-
-    real (kind=8) M_PI
-    !!!   parameter (M_PI = 3.141592654)
-
-    !---------------------------------------------------------------------------
-
-
-    m_pi = ACOS (-1.0)
-
-    !/* Given the grid zone, then set the central meridian, lambda0 */
-
-    !/* Check the grid zone format */
-
-    zone_long = grid_zone(1)
-    zone_lat = grid_zone(2)
-    if ((zone_long .LT. 1) .OR. (zone_long .GT. 61)) then
-      write (*,*) 'Invalid grid zone format: ', zone_long, zone_lat
-      ierr = -1
-      return 
-    endif
-
-    longitude = (FLOAT (zone_long - 1) * 6.0) - 180.0
-    latitude = (FLOAT (zone_lat) * 8.0) - 80.0
-
-    !/* Take care of special cases */
-
-    if ((latitude .LT. -80.0) .OR. (latitude .GT. 84.0)) then
-      lambda0 = 0.0
-      ierr = 0
-      return 
-    endif
-
-    if (latitude .GT. 56.0 .AND. latitude .LT. 64.0 .AND. &
-      longitude .GT. 0.0 .AND. longitude .LT. 12.0) then
-    if (longitude .LT. 3.0) then
-      lambda0 = 1.5 * M_PI / 180.0
-    elseif (longitude .LT. 12) then
-      lambda0 = 7.5 * M_PI / 180.0
-    endif
-    ierr = 0
-    return
-  endif
-
-  if (latitude .GT. 72.0 .AND. &
-    longitude .GT. 0.0 .AND. longitude < 42.0) then
-  if (longitude .LT. 9.0) then
-    lambda0 = 4.5 * M_PI / 180.0
-  elseif (longitude .LT. 21.0) then
-    lambda0 = 15.0 * M_PI / 180.0
-  elseif (longitude .LT. 33.0) then
-    lambda0 = 27.0 * M_PI / 180.0
-  elseif (longitude .LT. 42.0) then
-    lambda0 = 37.5 * M_PI / 180.0
-  endif
-  ierr = 0
-  return
-endif
-
-!/* Now handle standard cases */
-
-lambda0 = (FLOAT (zone_long - 1) * 6.0 + (-180.0) + 3.0) * M_PI / 180.0
-
-!/* All done */
-
-ierr = 0
-return
-end
-
-!*************************************************************************
-
-    subroutine clean_input(U1,name,U2,char)
-      implicit none
-
-      character*200,intent(in) :: name
-      integer,intent(in) :: U1
-      integer,intent(in) :: U2
-      character,intent(in) :: char*1
-      character :: line*1024
-
-      integer :: i,k,j
-      character*9,parameter :: FMT1='(a1024)'   !Length of 'line'
-
-      open (U1,file=trim(adjustL(name)),status='old')
-      open (U2,status='scratch')
-      1 read (U1,FMT1,end=2) line
-      if (line(1:1).ne.char.and. line(1:1).ne.' ') then
-        if (scan(line,char).ne.0) then
-          do i=scan(line,char),1024
-            line(i:i)=' '
-          enddo
-        endif
-        k=1
-        do j=1,1024
-          if (line(j:j).eq.' '.or.line(j:j).eq.',') then
-            if (j.ne.k) write (U2,'(a)') line(k:j-1)
-            k=j+1
-          endif
-        enddo
-      endif
-      goto 1
-      2 close (U1)
-      rewind (U2)
-
-    end subroutine
-
-    function interp1(x,Y,xi)
-
-      use precision_kind
-      implicit none
-      integer :: I
-      real(kind=r4) :: xi
-      real(kind=r4) :: interp1
-      !Description
-
-      ! yi = interp1(x,Y,xi) interpolates to find yi, the values of the underlying function Y
-      ! at the points in the vector or array xi. x must be a vector. Y can be a scalar, a vector,
-      ! or an array of any dimension, subject to the following conditions:
-      ! If Y is a vector, it must have the same length as x. A scalar value for Y is expanded
-      ! to have the same length as x. xi can be a scalar, a vector, or a multidimensional array,
-      ! and yi has the same size as xi.
-
-      real(kind=r4) :: x(*)
-      real(kind=r4) :: Y(*)
-
-      I=2
-      do while(xi.gt.x(I))
-        I=I+1
-      enddo
-
-      interp1=(Y(I-1)*(x(I)-xi)+Y(I)*(xi-x(I-1)))/(x(I)-x(I-1))
-
-      return
-    end function
-
-    !---------------------------------------------------------------------------------------------------
-
-    subroutine user_init (nd,range,scales)
-
-      use precision_kind
-      implicit none
-
-      real(kind=r4),intent(in) :: range(2,*)
-      real(kind=r4),intent(out) :: scales(*)
-      integer,intent(in) :: nd
-
-      scales(1:nd)=-1.
-
-      return
-    end subroutine
-
-    !---------------------------------------------------------------------------------------------------
-    subroutine writemodels (nd,ntot,models,misfit,ns1,ns2,itmax, &
-      nh_max,nh,header)
-
-      use precision_kind
-      use fwd
-      use CFC
-
-      implicit none
-
-      integer :: nd
-      integer :: ntot
-      integer :: ns1
-      integer :: ns2
-      integer :: itmax
-      integer :: nh_max
-      integer :: nh
-      integer :: i
-      integer :: k
-      integer :: idx
-
-      real(kind=r4) :: models (nd,*)
-      real(kind=r4) :: misfit (ntot)
-      character*(*) header
-      character*5 :: tempo
-
-
-      write(tempo,'(i5)') model_id
-      open (87,file='./results/'//trim(adjustL(run_name))//'/NA_results_sample'//trim(adjustL(tempo))//'.txt',status='unknown')
-      write (87,*) "Total number of samples:", sample(model_id)%nneighbours + 1
-      write (87,'(80a)') ("-", I = 1, 80)
-      write (87,300) "Name", "lat", "lon","Elev.meas", "Elev.dem","Elev.flt","FTage", "MTL"
-      write (87,'(80a)') ("-", I = 1, 80)
-      write (87,301)   sample(model_id)%s1name,&
-                     sample(model_id)%lat,&
-                     sample(model_id)%lon,&
-                     int(sample(model_id)%measured_elevation),&
-                     sample(model_id)%dem_elevation,&
-                     sample(model_id)%flt_elevation,&
-                     sample(model_id)%FTage,&
-                     sample(model_id)%MTL
-
-      do i=1,sample(model_id)%nneighbours
-     
-        idx = sample(model_id)%neighbours(i)
-        write (87,301) sample(idx)%s1name,&
-                     sample(idx)%lat,&
-                     sample(idx)%lon,&
-                     int(sample(idx)%measured_elevation),&
-                     sample(idx)%dem_elevation,&
-                     sample(idx)%flt_elevation,&
-                     sample(idx)%FTage,&
-                     sample(idx)%MTL
-      end do
-
-
-      write (87,'(80a)') ("-", I = 1, 80)
-      write (87, *) "Model with lowest misfit"
-      write (87, 302) sample(model_id)%optimum_LKH, sample(model_id)%optimum_path(1,1:3), sample(model_id)%optimum_path(2,:)   
-      write (87,'(80a)') ("-", I = 1, 80)
-      write (87, *) "List of models" 
-      write (87,'(80a)') ("-", I = 1, 80)
-     
-      write (87, 300) "Misfit", "t1", "t2", "t3", "T1", "T2", "T3", "T4" 
-      write (87,'(80a)') ("-", I = 1, 80)
-      do i=1,ntot
-      
-        write (87,302) misfit(i),(models(k,i),k=1,nd)
-      
-      enddo
-      close (87)
-      
-      300 format(8a10)
-      301 format(a10, 2f10.1, 3i10, 2f10.1)
-      302 format(E20.10,100f10.1)
-
-      return
-    end subroutine
-
-
-    !-----------------------------------------------------------------------
-    !
-    ! subroutine loglike_FT
-    !
-    ! 
-    ! For fission track data, a natural choice of data fit is the log 
-    ! likelihood function given by Gallagher (1995). This is defined in terms of the
-    ! observed spontaneous and induced track counts, Nsj and Nij for each crystal j of
-    ! a total of Nc.   
-    !
-    subroutine loglike_FT(PredAFTA, PredMTL, zeta, rdos, ns, ni, nc, lkh)
-      use precision_kind
-      implicit none
-
-      real(kind = r4), intent(in) :: PredAFTA, PredMTL, zeta, rdos
-      integer, intent(in) :: nc, ns(nc), ni(nc) 
-      real(kind = r4) :: lkh
-
-      integer :: j
-      real(kind = r4), parameter :: U238_DECAYCT = 1.55125E-10, alo = 16.3
-      real(kind = r4) :: rsri, theta  
-
-
-      ! 1) First, calculate rhos/rhoi from predicted age
-      rsri = (exp(U238_DECAYCT * PredAFTA * 1D6) - 1)
-      rsri = rsri * (2 * (PredMTL / alo)) / (U238_DECAYCT * zeta * rdos)
-
-      ! 2) Calculate theta from rhos/rhoi
-      theta = rsri / (1 + rsri)
-
-      ! 3) Calculate log-likelihood using count data
-      lkh = 0._r4
-      do j = 1, nc
-        lkh = lkh + ns(j) * log(theta) + ni(j) * log(1 - theta)
-      end do
-
-    end subroutine loglike_FT  
-
-    !-----------------------------------------------------------------------
-    !
-    ! subroutine loglike_TL
-    subroutine loglike_TL(nx, ntl, tl, ftld, lkh)
-      use precision_kind
-      implicit none
-
-      integer, intent(in) :: nx,ntl 
-      real(kind = r4),intent(in) :: tl(ntl), ftld(nx)
-      real(kind = r4),intent(out) :: lkh 
-
-      integer :: i, j
-      real(kind = r4) :: pdfx(nx) 
-
-      do i = 1, nx
-        pdfx(i) = (i-1) * 0.1_r4
-      end do
-
-      lkh = 0._r4
-
-      do i = 1, ntl
-        j = locate(pdfx, tl(i))
-        lkh = lkh + log(ftld(j) / 100.0)
-      end do
-
-
-    contains
-
-
-      function locate(xx,x)
-        use precision_kind
-        implicit none
-
-        real(kind=r4),dimension(:),intent(in) :: xx
-        real(kind=r4),intent(in) :: x
-        integer :: locate
-
-        ! Given an array xx(1:N), and given a value x, returns a value j such that x is between
-        ! xx(j) and xx(j + 1). xx must be monotonic, either increasing or decreasing. j = 0 or
-        ! j = N is returned to indicate that x is out of range.
-
-        integer :: n,jl,jm,Ju
-        logical :: ascnd
-
-        n=size(xx)
-        ascnd = (xx(n) >= xx(1)) ! True if ascending order of table, false otherwise.
-        jl=0                     ! Initialize Lower limit.
-        ju=n+1                   ! Initialize upper limit.
-        do
-          if(ju-jl <= 1) exit ! Repeat until this condition is satisfied
-          jm=(ju+jl)/2 ! compute a midpoint
-          if(ascnd .eqv. (x >= xx(jm))) then
-            jl=jm  
-          else
-            ju=jm
-          endif
-        enddo
-        if(x == xx(1)) then
-          locate=1
-        else if (x == xx(n)) then
-          locate=n-1
-        else
-          locate=jl
-        endif
-      end function locate
-
-
-    end subroutine loglike_TL
+end subroutine loglike_TL
 
 

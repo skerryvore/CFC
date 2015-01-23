@@ -48,6 +48,7 @@ module CFC
     real(kind=r4) :: neighbours_ages(500)
     real(kind=r4) :: neighbours_ages_err(500)
     real(kind=r4) :: neighbours_offsets(500)
+    real(kind=r4) :: neighbours_distances(500)
     integer       :: neighbours_ncounts(500)
     integer       :: neighbours_ntl(500)
     real(kind=r4) :: neighbours_zeta(500)
@@ -84,10 +85,12 @@ end module CFC
 
 module fwd
   use precision_kind
+  real(kind=r4) :: MAXSEARCHRADIUS
   integer,parameter :: NSAMPLEMAX=100
   integer,parameter :: NCOUNTMAX=100
   integer,parameter :: NTLMAX=400
   real(kind=r4)  :: fwd_offsets(NSAMPLEMAX+1)
+  real(kind=r4)  :: fwd_distances(NSAMPLEMAX+1)
   integer  :: fwd_ndata
   integer  :: fwd_NS(NSAMPLEMAX,NCOUNTMAX)
   integer  :: fwd_NI(NSAMPLEMAX,NCOUNTMAX)

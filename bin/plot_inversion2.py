@@ -5,6 +5,7 @@ import pylab as plt
 from matplotlib.collections import LineCollection
 import argparse
 from itertools import islice
+import matplotlib.colors as mc
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 import gdal
@@ -88,7 +89,7 @@ if __name__ == "__main__":
     line_segments, xbest, ybest, mvals = helfrag_plot(filename, range_time, range_temp,skip)
 
     line_segments.set_array(mvals)
-    line_segments.set_cmap(cm.coolwarm)
+    line_segments.set_cmap(cm.jet)
     line_segments.set_alpha(0.3)
     ax = plt.subplot()
     ax.set_xlim(0,500)

@@ -364,8 +364,8 @@ implicit none
 
     ! Calculate delaunay triangulation using TRIPACK
 
-    write(*, '(a)') "TRIPACK library"
-    write(*, '(a,i6)') "The number of nodes is ", ndata
+    !write(*, '(a)') "TRIPACK library"
+    !write(*, '(a,i6)') "The number of nodes is ", ndata
 
     ! Create the Delaunay triangulation (TRMESH), and test for errors
     call TRMESH(ndata, sample%x, sample%y,&
@@ -412,39 +412,6 @@ implicit none
     close(78)
     !call trlprt ( ncc, lct, ndata, sample%x, sample%y, nrow, nt2, ltri, prntx )
     deallocate(ltri)
-
-    ! Create an EPS file image of the triangulation
-    sample%xnorm = sample%y / maxval(sample%y)
-    sample%ynorm = sample%x / maxval(sample%x)
-    wx1 = minval ( sample(1:ndata)%xnorm )
-    wx2 = maxval ( sample(1:ndata)%xnorm )
-    wy1 = minval ( sample(1:ndata)%ynorm )
-    wy2 = maxval ( sample(1:ndata)%ynorm )
-
-    !  Create an encapsulated PostScript file image of the triangulation.
-    !
-    open ( unit = lplt, file = 'tripack_prb.eps', status = 'unknown' )
-    !
-    !  NUMBR = TRUE iff nodal indexes are to be displayed.
-    !
-    numbr = ( ndata <= 200 )
-    !
-    !  Store a plot title.  It must be enclosed in parentheses.
-    !
-    title = '(Triangulation)'
-   
-    call trplot ( lplt, pltsiz, wx1, wx2, wy1, wy2, ncc, lcc, ndata, &
-        sample%xnorm, sample%ynorm, LIST, LPTR, LEND, title, numbr, IER )
- 
-    close ( unit = lplt )
- 
-    if ( ier == 0 ) then
-      write ( *, '(a)' ) ' '
-      write ( *, '(a)' ) '  TRPLOT has created a triangulation plot.'
-    else
-      write ( *, '(a)' ) ' '
-      write ( *, '(a,i6)' ) '  TRPLOT failed with IER = ', ier
-    end if
 
     ! Find neigbours of each sample
     allocate(NNABS(ndata))
@@ -622,6 +589,7 @@ implicit none
           call loglike_TL(200, sample(I)%NTL, sample(I)%TL, FTLD, llTL)
 
           LKH = llFT + llTL
+          LKH = abs(LKH)
 
           ! If the log-likelihood is greater than the previous history
           ! Store the history and record the misfit
@@ -655,10 +623,10 @@ implicit none
 
   ! write general results to output file
   open(LU_output,file = trim(adjustL(output_file)), status='unknown')
-  write(LU_output,'(a15,11a10)') "Sample Name", "Lowest Misfit", "t1","t2","t3","t4","t5","T1","T2","T3","T4","T5" 
+  write(LU_output,'(2a15,8a10)') "Sample Name", "Lowest Misfit", "t1","t2","t3","t4","T1","T2","T3","T4" 
   do I=1,ndata  
-    write(LU_output,'(a15,11f10.1)') sample(I)%s2name,sample(I)%Lwmisfit,sample(I)%bestpath(1,:),&
-    &sample(I)%bestpath(2,:)
+    write(LU_output,'(a15,f15.1,8f10.1)') sample(I)%s2name,sample(I)%optimum_LKH,sample(I)%optimum_path(1,:),&
+    &sample(I)%optimum_path(2,:)
   enddo
 
   ! Determine temperature at each time-step (for output purpose)
@@ -705,7 +673,6 @@ implicit none
     call create_shape_points(1_c_int, "Temp"//trim(adjustL(filename))//".shp"//achar(0),&
       &  real(sample(:)%x,c_double), real(sample(:)%y, c_double), int(ndata,i8))
 
-
     ! Create the .prj file associated to the shapefile
     ! The coordinate system is identical to the input topography file so
     ! we just need to copy the information from the topo.prj
@@ -747,7 +714,6 @@ implicit none
   call MPI_FINALIZE(ierr)
 
 end program
-
 
 
 subroutine forward(nd,NA_param,misfit)
@@ -843,7 +809,6 @@ subroutine forward(nd,NA_param,misfit)
     enddo
 
     call AdjustHistory(ketcham_time, ketcham_temp, surface_temperature, NPOINTS)
-
     call ketch_main(NPOINTS,ketcham_time,ketcham_temp,&
                     real(alo,8),ketcham_ftage,oldest_age,ketcham_ftldmean,&
                     ketcham_ftldistrib)
@@ -976,7 +941,6 @@ subroutine writemodels (nd,ntot,models,misfit,ns1,ns2,itmax, &
 
   return
 end subroutine
-
 
 !-----------------------------------------------------------------------
 !

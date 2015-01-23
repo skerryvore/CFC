@@ -59,7 +59,6 @@ implicit none
   integer :: A, B, C, D, E, F
   CHARACTER(LEN=100), DIMENSION(200), TARGET :: stringArray
   TYPE(C_PTR), DIMENSION(200) :: stringPtrs
-  real(kind=r4) :: MAXSEARCHRADIUS
 
   ! List of variables used by TRIPACK
   integer(kind = 4), dimension(:), allocatable :: LIST, LPTR, LEND, NEAR, NEXT
@@ -434,7 +433,10 @@ implicit none
           sample(I)%neighbours(KK) = candidate
         end if
       end do
-
+      
+      ! Add the centre to the neighbors list
+      KK = KK+1
+      sample(I)%neighbours(KK) = I
       sample(I)%nneighbours = KK
 
 
@@ -460,7 +462,7 @@ implicit none
         sample(I)%neighbours_MTL(L)     = sample(J)%MTL
         sample(I)%neighbours_MTL_err(L) = sample(J)%MTL_err
         sample(I)%neighbours_offsets(L) = sample(J)%offset
-
+        sample(I)%neighbours_distances(L)  = distances(I,J)
        end do
      
     end do
@@ -502,6 +504,7 @@ implicit none
     fwd_ndata         = sample(I)%nneighbours
     fwd_MTL(1:kk)     = sample(I)%neighbours_MTL(1:kk)
     fwd_offsets(1:kk) = sample(I)%neighbours_offsets(1:kk)
+    fwd_distances(1:kk) = sample(I)%neighbours_distances(1:kk)
     fwd_ncounts(1:kk) = sample(I)%neighbours_ncounts(1:kk)
     fwd_zeta(1:kk)    = sample(I)%neighbours_zeta(1:kk)
     fwd_rhodos(1:kk)  = sample(I)%neighbours_rhodos(1:kk)
@@ -736,6 +739,7 @@ subroutine forward(nd,NA_param,misfit)
   real(kind=r4) :: LKH_FTAGE(NSAMPLEMAX)
   real(kind=r4) :: LKH_TLDistrib(NSAMPLEMAX) 
   real(kind=r4) :: LKH_sample(NSAMPLEMAX)
+  real(kind=r4) :: LKH_sampleW(NSAMPLEMAX)
   real(kind=r4) :: total_LKH
   real(kind=r4) :: surface_temperature
 
@@ -791,7 +795,7 @@ subroutine forward(nd,NA_param,misfit)
   surface_temperature = TEMP(NPOINTS)
 
   !========== Calculate fission track ages
-  LKH_FTAGE=1000000._4            
+  LKH_FTAGE=1e22           
   do K=1,fwd_ndata
    
     ! Need to update Npoints as it may be changed by AdjustHistory 
@@ -836,8 +840,15 @@ subroutine forward(nd,NA_param,misfit)
     !print*, LKH_FTage(K), LKH_TLDistrib(K), LKH_sample(K), fwd_ncounts(K)
   enddo
 
+  ! Inverse Distance Weighting of misfits
+  do K = 1, fwd_ndata
+    LKH_sampleW(K) = (1.0_r4 / exp(fwd_distances(K)/MAXSEARCHRADIUS))
+    LKH_sampleW(K) = LKH_sample(K) * LKH_sampleW(K)
+  end do
+
   !Total likelihood is just the sum of the individual Likelihood.
-  total_LKH=sum(LKH_sample(1:fwd_ndata)) 
+  !total_LKH=sum(LKH_sample(1:fwd_ndata)) 
+  total_LKH=sum(LKH_sampleW(1:fwd_ndata)) 
   misfit=abs(total_LKH)        
 
 end subroutine forward
@@ -884,7 +895,10 @@ subroutine writemodels (nd,ntot,models,misfit,ns1,ns2,itmax, &
   real(kind=r4) :: misfit (ntot)
   character*(*) header
   character*5 :: tempo
-
+  real(kind=r4) :: mfitmin
+  real(kind=r4) :: model_opt(50)
+  integer :: mopt, sampleID
+  common /NA_misfit_info/mfitmin,mopt,model_opt,sampleID
 
   write(tempo,'(i5)') model_id
   open (87,file='./results/'//trim(adjustL(run_name))//'/NA_results_sample'//trim(adjustL(tempo))//'.txt',status='unknown')
@@ -918,10 +932,9 @@ subroutine writemodels (nd,ntot,models,misfit,ns1,ns2,itmax, &
       sample(idx)%MTL
   end do
 
-
   write (87,'(80a)') ("-", I = 1, 80)
   write (87, *) "Model with lowest misfit"
-  write (87, 302) sample(model_id)%optimum_LKH, sample(model_id)%optimum_path(1,1:3), sample(model_id)%optimum_path(2,:)   
+  write (87, 302) mfitmin, model_opt(1:(ttpoints-1)), 500._r4, model_opt(4:(2*ttpoints-1))  
   write (87,'(80a)') ("-", I = 1, 80)
   write (87, *) "List of models" 
   write (87,'(80a)') ("-", I = 1, 80)

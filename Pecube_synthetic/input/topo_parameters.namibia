@@ -26,20 +26,20 @@ Namibia_lowres.in
 
 $ (3) the number of points in the longitude and latitude directions, respectively
 $     if they are negative, they correspond to the total number of points and the number of triangles connecting them
-546 596
+120 132
 
 $ (4) the spacing in degrees of longitude and latitude, respectively
 $     This is not used in case nx and ny are negative (random grid)
-0.0092929486196 0.0092929486196
+0.041666666666000 0.041666666666000
 
 $ (5) a skipping factor (1 means all points of the topography are used; 2 means that
 $     every second point is used etc). Note that nx, ny AND nskip define the resolution of the
 $     finite element grid in the horizontal directions
 $     again this is not used in case nx and ny are negative (random grid)
-20
+2
 
 $ (6) the longitude and latitude of the bottom left corner of the topo file
-12.9286506218 -24.0225017031
+13.0 -24.0
 
 $ (7) the number of time steps in the tectonomorphic scenario
 3
@@ -74,7 +74,7 @@ $ otherwise it should contain the number of data points (locations)
 $ for each location a line containing sample longitude, latitude, elevation
 $ as well as Apatite He age, error in age, Apatite FT age, error in age
 $ with a negative age corresponding to a non-existing age
-Namibia.dat
+NamibiaRaab.dat
 
 $ (13) the default age (in Myr) for rocks that never reach the closure temperature, a flag to decide which 
 $ apatite FT routine to use (0 = van der Beek or 1 = Ketcham), a flag to decide whether (flag=0) to use the absolute

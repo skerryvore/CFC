@@ -43,11 +43,11 @@ calc_distance.o
 .cpp.o:
 	$(CPP) $(CPPFLAGS) $*.cpp
 
-NCFA:$(OBJECTS)
-	$(FF90) $(OBJECTS) -lgdal -lm -lstdc++ -I/usr/include -o ../bin/NCFA
+CFC:$(OBJECTS)
+	$(FF90) $(OBJECTS) -lgdal -lm -lstdc++ -I/usr/include -o ../bin/CFC
 	
 all: $(OBJECTS)
-	make NFCA
+	make CFC
 	
 clean:
 	rm *.o

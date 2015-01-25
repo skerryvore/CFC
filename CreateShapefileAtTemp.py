@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import osgeo.ogr as ogr
 import osgeo.osr as osr
 import numpy as np
@@ -50,6 +52,7 @@ layer.CreateField(field_name)
 layer.CreateField(ogr.FieldDefn("Latitude", ogr.OFTReal))
 layer.CreateField(ogr.FieldDefn("Longitude", ogr.OFTReal))
 layer.CreateField(ogr.FieldDefn("Temp", ogr.OFTReal))
+layer.CreateField(ogr.FieldDefn("CoolRate", ogr.OFTReal))
 
 # Process the text file and add the attributes and features to the shapefile
 for sample in listofsamples:
@@ -62,6 +65,12 @@ for sample in listofsamples:
     # Get Temperature at time ti
     Temperature = FindTempAtTime(sample['Time'], sample['Temperature'],ti) 
     feature.SetField("Temp", float(Temperature))
+    # Calculate Cooling Rate
+    T1 = FindTempAtTime(sample['Time'], sample['Temperature'],ti-1.0) 
+    T2 = FindTempAtTime(sample['Time'], sample['Temperature'],ti+1.0) 
+    dT = T2 - T1
+    dt = 2.0
+    feature.SetField("CoolRate", float(dT/dt))
 
     # create the WKT for the feature using Python string formatting
     wkt = "POINT(%f %f)" %  (float(sample['Longitude']) , float(sample['Latitude']))

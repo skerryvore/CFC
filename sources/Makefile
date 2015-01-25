@@ -4,9 +4,9 @@
 
 FLAGS = -g -L./LIB/shapelib-1.3.0/ -lshp -lgdal -I/usr/include -c -O \
 -fbounds-check \
+-Wunused-parameter
 #-fcheck-array-temporaries \
 -Wall \
--Wunused-parameter
 
 CPPFLAGS = -g -lm -lgdal -lstdc++ -c
 

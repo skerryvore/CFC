@@ -6,12 +6,8 @@ KINGSCANYON
 KingsCanyonSyn_list.txt
 ! Name of the output file
 KingsCanyon_out.txt
-! cutoff wavelenght
-100000
-! CIRCLE DEF 1:RADIUS, 2:NCLOSEST, 3:VORONOI
-3
-! Radius of the circle (in km)
-!25
+! Minimum / Maximum search radii
+0 25
 ! Name of the DEM file, note that the program is going to check if a highpass topography file exist
 ! file_name.flt, if not the file will be created and the calculation could take time
 ! My advice would be to filter the topography using a dedicated GIS software such as GRASS.
@@ -25,8 +21,13 @@ KingsCanyon_filtered.tif
 ! In that case the program try to find the optimum value of the gradient for each inversion (each circle)
 ! in °C/km
 14.3
-!
-5.
+! Define the Box
+! Temperature
+0 150
+! Time
+0 500
+! Max Surface temperature
+20
 ! Number of output map
 10
 ! Output at time (Ma BP):

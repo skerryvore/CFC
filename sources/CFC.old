@@ -1,11 +1,11 @@
 ﻿program NFCA
-  use iso_c_binding
-  use precision_kind
-  use CFC
-  use fwd
-  use utilities
+use iso_c_binding
+use precision_kind
+use CFC
+use fwd
+use utilities
 
-  implicit none
+implicit none
   include "mpif.h"
   integer,parameter :: LU_param=32
   integer,parameter :: LU_data=33
@@ -30,26 +30,27 @@
   real(kind=r8),allocatable,dimension(:,:) :: distances
   integer,allocatable,dimension(:,:) :: dem_topo,flt_topo
   real(kind=r8) :: rlon1,rlat1,rlon2, rlat2
-  real(kind=r4) :: range(2,1024)
-  real(kind=r4) :: MINSEARCHRADIUS 
+  real(kind=r4)  :: range(2,1024)
   integer :: nd
   integer :: ierr, r1
   logical :: file_exists
   integer :: nmaps, ncsamp, ncloc
   real(kind=r4), dimension(:),allocatable :: maps 
+  real(kind=r4) :: dt
   real(kind=r4) :: mfitmin
   real(kind=r4) :: model_opt(50)
-  real(kind=r4) :: SEARCHBOX(2,2)
-  integer, parameter :: TEMPERATURE=1, TIME=2, START=1, END=2
-  real(kind=r4) :: MAXSURFTEMP
+  real(kind=r4 ) :: cutwave
   integer :: mopt
   integer :: nproc
   integer :: iproc
+  integer :: CIRCLE_DEF
+  integer, parameter :: NCLOSEST=2, RADIUS =1, VORONOI=3 
   logical :: lroot  
   logical :: debug
   logical :: FIRST_PATH, BOREHOLE
   logical :: ADD_POINTS
   logical :: time_sequence(10)
+  logical :: prntx
   real(kind=r4) :: t1,t2
   real(kind=r4) :: MTL, AFTA, FTLD(200), LKH 
   real(kind=r4) :: llTL, llFT 
@@ -60,11 +61,15 @@
   CHARACTER(LEN=100), DIMENSION(200), TARGET :: stringArray
   TYPE(C_PTR), DIMENSION(200) :: stringPtrs
 
-
   ! List of variables used by TRIPACK
   integer(kind = 4), dimension(:), allocatable :: LIST, LPTR, LEND, NEAR, NEXT
   integer :: IER, LNEW
   real(kind=r8),dimension(:), allocatable :: DIST
+  real(kind=8) :: wx1, wx2, wy1, wy2
+  character(len = 80) :: title
+  logical :: numbr
+  integer (kind = 4), parameter :: lplt = 72
+  real ( kind = 8 ), parameter :: pltsiz = 7.5D+00
 
   ! List of variables used by TROUTQ
   integer :: NCC, LCC(1), LOUT, NAT, NB, NT
@@ -73,7 +78,7 @@
   common/invert_type/time_sequence  
   common /NA_MPI/iproc,nproc,lroot
   common /NA_misfit_info/mfitmin,mopt,model_opt,sampleID
-
+  
   ! Variable to be sent to the Ketcham C_routine
   real(kind = c_double),parameter :: alo=16.3
   real(kind = c_double) :: kAFTA,kFTLD(200),kMTL, kold
@@ -84,7 +89,7 @@
   real(kind=c_double) :: rx, ry
 
   include "Cinterfaces.h"
-
+  
   debug=.TRUE.
 
   call MPI_Init(ierr )      
@@ -92,21 +97,29 @@
   call MPI_Comm_rank( MPI_COMM_WORLD, iproc, ierr ) 
 
   if(iproc.eq.0) call CPU_TIME(t1)
-
+    
   ! open parameters file 
   param_file="input/param_file.txt" 
   call clean_input(LU_dummy,param_file,LU_param,"!")
-
+  
   ! Read input parameters from input file.
   read(LU_param,*) run_name
   read(LU_param,*) data_file
   read(LU_param,*) output_file
-  read(LU_param,*) MINSEARCHRADIUS
-  read(LU_param,*) MAXSEARCHRADIUS
+  read(LU_param,*) cutwave
+  read(LU_param,*) CIRCLE_DEF
+  
+  select case(CIRCLE_DEF)
+    case(RADIUS)
+      read(LU_param,*) circle
+    case(NCLOSEST)
+      read(LU_param,*) ncloc
+    end select
+  
   read(LU_param,*) dem_file ! read name of dem file  
   read(LU_param,*) filtered_file ! read name of dem file  
   read (LU_param,'(a1024)') line
-
+ 
   icol=scan(line,':')
   if (icol.ne.0) then
     search_geo=.TRUE.
@@ -118,27 +131,21 @@
     search_geo=.FALSE.
     read (line,*) geotherm
   endif
-  
-  read(LU_param,*) SEARCHBOX(START,TEMPERATURE)
-  read(LU_param,*) SEARCHBOX(END,TEMPERATURE)
-  read(LU_param,*) SEARCHBOX(START,TIME)
-  read(LU_param,*) SEARCHBOX(END,TIME)
-  read(LU_param,*) MAXSURFTEMP
+ 
+  read(LU_param,*) dt
   read(LU_param,*) nmaps
-
+ 
   allocate(maps(nmaps))
   do I = 1, nmaps
     read(LU_param,*) maps(I)
   end do
- 
-  FINALTIME = SEARCHBOX(END,TIME)
-  MAXSEARCHRADIUS = MAXSEARCHRADIUS * 1000._r4
-  MINSEARCHRADIUS = MINSEARCHRADIUS * 1000._r4
+
+  circle=circle*1000 ! Convert to m 
   geotherm = geotherm / 1000._r8
 
   ! open sample file list
   open(LU_data,file='./data/'//trim(adjustL(data_file)), status='unknown')
-
+  
   ! read number of lines in the data file
   ndata=0
   read(LU_data,*) ! header
@@ -146,42 +153,42 @@
     ndata = ndata + 1
     read(LU_data,*,iostat=io)
     if (io < 0) then
-      ndata = ndata - 1
-      print*,"End of file: ",ndata," samples found"
-      exit
+     ndata = ndata - 1
+     print*,"End of file: ",ndata," samples found"
+     exit
     endif
   enddo
-
+  
   !Check if the folder "results" exists
   file_exists=.FALSE.
   inquire(FILE="./results", exist=file_exists)
   if(.not.file_exists) then
     CALL system("mkdir results")
   endif
-
+  
   !Create RUN folder
   file_exists=.FALSE.
   inquire(FILE="./results/"//trim(adjustL(run_name)), exist=file_exists)
   if(.not.file_exists) then
     CALL system("mkdir ./results/"//trim(adjustL(run_name)))
   endif
-
+  
   ! allocate data array
   allocate(sample(ndata))
   allocate(distances(ndata,ndata))  
-
+  
   ! read data
   rewind(LU_data)
   read(LU_data,*) ! header
   do I=1,ndata
     read(LU_data,*)&
-      sample(I)%s1name,&  
-      sample(I)%lon,&
-      sample(I)%lat,&  
-      sample(I)%strat_old,&
-      sample(I)%strat_young,&
-      sample(I)%measured_elevation,&
-      sample(I)%filepath
+    sample(I)%s1name,&  
+    sample(I)%lon,&
+    sample(I)%lat,&  
+    sample(I)%strat_old,&
+    sample(I)%strat_young,&
+    sample(I)%measured_elevation,&
+    sample(I)%filepath
     sample(I)%id = I
   end do
 
@@ -189,43 +196,43 @@
   do I=1,ndata
     filename="./data/"//trim(adjustL(sample(I)%filepath))
     call read_mtx(filename,&
-      &sample(I)%NCOUNTS,&
-      &sample(I)%NTL,&
-      &sample(I)%zeta,&
-      &sample(I)%rhod,&
-      &sample(I)%nd,&
-      &sample(I)%FTage,&
-      &sample(I)%FTage_err,&
-      &sample(I)%MTL,&
-      &sample(I)%MTL_err,&
-      &sample(I)%stdev,&
-      &sample(I)%stdev_err,&
-      &sample(I)%NS,&
-      &sample(I)%NI,&
-      &sample(I)%TL,&
-      &sample(I)%s2name)
+                  &sample(I)%NCOUNTS,&
+                  &sample(I)%NTL,&
+                  &sample(I)%zeta,&
+                  &sample(I)%rhod,&
+                  &sample(I)%nd,&
+                  &sample(I)%FTage,&
+                  &sample(I)%FTage_err,&
+                  &sample(I)%MTL,&
+                  &sample(I)%MTL_err,&
+                  &sample(I)%stdev,&
+                  &sample(I)%stdev_err,&
+                  &sample(I)%NS,&
+                  &sample(I)%NI,&
+                  &sample(I)%TL,&
+                  &sample(I)%s2name)
   enddo
 
 
   ! Get UTM Coordinates
   do I=1,ndata
     call LatLon2UTM(real(sample(I)%lon, kind=c_double),&
-      real(sample(I)%lat, kind=c_double),&
-      rx,ry)
+                    real(sample(I)%lat, kind=c_double),&
+                    rx,ry)
     sample(I)%x = rx
     sample(I)%y = ry
   end do 
 
   do I=1,ndata
     call getElevation(real(sample(I)%lon,kind=c_double),&
-      real(sample(I)%lat,kind=c_double),&
-      "./DEM/"//trim(adjustL(dem_file))//C_NULL_CHAR,&
-      elevation) 
+                      real(sample(I)%lat,kind=c_double),&
+                      "./DEM/"//trim(adjustL(dem_file))//C_NULL_CHAR,&
+                      elevation) 
     sample(I)%dem_elevation = real(elevation)    
     call getElevation(real(sample(I)%lon,kind=c_double),&
-      real(sample(I)%lat,kind=c_double),&
-      "./DEM/"//trim(adjustL(filtered_file))//C_NULL_CHAR,&
-      elevation) 
+                      real(sample(I)%lat,kind=c_double),&
+                      "./DEM/"//trim(adjustL(filtered_file))//C_NULL_CHAR,&
+                      elevation) 
     sample(I)%flt_elevation = real(elevation)
     sample(I)%offset = sample(I)%flt_elevation - sample(I)%dem_elevation 
   enddo
@@ -234,7 +241,7 @@
   write(16,'(3a10,2a10,2a15)') "Measured ", "Extracted ", "Filtered ", "Lat ", "Lon ", "XUTM", "YUTM"
   do I = 1, ndata
     write(16,'(3i10,2f10.2, 2f15.2)') int(sample(I)%measured_elevation), sample(I)%dem_elevation, sample(I)%flt_elevation, &
-      & sample(I)%lat, sample(I)%lon, sample(I)%x, sample(I)%y
+              & sample(I)%lat, sample(I)%lon, sample(I)%x, sample(I)%y
   end do
   close(16)
 
@@ -250,161 +257,268 @@
   ! find the neighbours
   sample%nneighbours = 0
   do I = 1, ndata
-    sample(I)%neighbours(:) = 0
+      sample(I)%neighbours(:) = 0
   end do
 
-
-  ! Initialize arrays, LIST, LPTR, LEND, LNEW, NEAR, NEXT, DIST, IER
-  NCC = 0 
-  IER = 0
-  allocate(LIST(6 * ndata - 12))
-  allocate(LPTR(6 * ndata - 12))
-  allocate(LEND(ndata))
-  allocate(NEAR(ndata))
-  allocate(NEXT(ndata))
-  allocate(DIST(ndata))
-
-  ! Calculate delaunay triangulation using TRIPACK
-  ! Create the Delaunay triangulation (TRMESH), and test for errors
+  kk = 0
   
-  call TRMESH(ndata, sample%x, sample%y,&
-    LIST, LPTR, LEND,LNEW, NEAR, NEXT, DIST,ier) 
-  if ( ier == -2 ) then
-    write ( *, '(a)' ) ' '
-    write ( *, '(a)' ) '  Error in TRMESH:'
-    write ( *, '(a)' ) '  The first three nodes are collinear.'
-    stop
-  else if ( ier == -4 ) then
-    write ( *, '(a)' ) ' '
-    write ( *, '(a)' ) '  Error in TRMESH:'
-    write ( *, '(a)' ) '  Invalid triangulation.'
-    stop
-  else if ( 0 < ier ) then
-    write ( *, '(a)' ) ' '
-    write ( *, '(a)' ) '  Error in TRMESH:'
-    write ( *, '(a)' ) '  Duplicate nodes encountered.'
-    stop
-  else if ( ier > 0) then
-    write ( *, '(a)' ) ' Error '
-    stop 
+  if(CIRCLE_DEF /= VORONOI) then
+
+  do I = 1,ndata
+
+    select case(CIRCLE_DEF)
+
+    case(RADIUS)
+      do J = 1,ndata
+        if(distances(I,J).lt.circle) then
+          sample(I)%nneighbours = sample(I)%nneighbours + 1
+          kk = sample(I)%nneighbours
+          sample(I)%neighbours(kk)         = J
+          sample(I)%neighbours_ncounts(kk) = sample(J)%ncounts
+          sample(I)%neighbours_zeta(kk)    = sample(J)%zeta
+          sample(I)%neighbours_rhodos(kk)  = sample(J)%rhod
+
+          do K=1, sample(J)%ncounts
+            sample(I)%neighbours_NS(kk,K) = sample(J)%NS(K)
+            sample(I)%neighbours_NI(kk,K) = sample(J)%NI(K)       
+          enddo 
+
+          sample(I)%neighbours_ages(kk)     = sample(J)%FTage
+          sample(I)%neighbours_ages_err(kk) = sample(J)%FTage_err
+          sample(I)%neighbours_ntl(kk)      = sample(J)%ntl
+
+          do K=1, sample(J)%ntl
+            sample(I)%neighbours_TL(kk,K) = sample(J)%TL(K)
+          enddo
+
+          sample(I)%neighbours_MTL(kk)     = sample(J)%MTL
+          sample(I)%neighbours_MTL_err(kk) = sample(J)%MTL_err
+          sample(I)%neighbours_offsets(kk) = sample(J)%offset
+        endif
+      end do
+
+    case(NCLOSEST)
+
+      ! Sort the samples by distance from the closest to the farest
+      allocate(sorted_distances(ndata))
+      allocate(idx(ndata))
+      sorted_distances = distances(I,1:ndata)
+      call indexx(sorted_distances, idx)
+
+      ! Select the N closest locations (ncloc) (i.e. samples from boreholes are
+      ! considered as a single location)
+      K = 1
+      ncsamp = 1
+      do while(ncsamp.ne.ncloc)
+        BOREHOLE = .FALSE.
+        if(K.gt.1) BOREHOLE = (sample(idx(K))%lat.eq.sample(idx(K-1))%lat.and.&
+          & sample(idx(K))%lon.eq.sample(idx(K-1))%lon)
+
+        sample(I)%nneighbours = sample(I)%nneighbours + 1
+
+        kk = sample(I)%nneighbours
+        sample(I)%neighbours(kk)         = idx(K)
+        sample(I)%neighbours_ncounts(kk) = sample(idx(K))%ncounts
+        sample(I)%neighbours_zeta(kk)    = sample(idx(K))%zeta
+        sample(I)%neighbours_rhodos(kk)  = sample(idx(K))%rhod
+
+        do L=1, sample(J)%ncounts
+          sample(I)%neighbours_NS(kk,L) = sample(idx(K))%NS(L)
+          sample(I)%neighbours_NI(kk,L) = sample(idx(K))%NI(L)       
+        enddo 
+
+        sample(I)%neighbours_ages(kk)     = sample(idx(K))%FTage
+        sample(I)%neighbours_ages_err(kk) = sample(idx(K))%FTage_err
+        sample(I)%neighbours_ntl(kk)      = sample(idx(K))%ntl
+        
+        do L=1, sample(J)%ntl
+          sample(I)%neighbours_TL(kk,L) = sample(idx(K))%TL(L)
+        enddo
+
+        sample(I)%neighbours_MTL(kk)     = sample(idx(K))%MTL
+        sample(I)%neighbours_MTL_err(kk) = sample(idx(K))%MTL_err
+        sample(I)%neighbours_offsets(kk) = sample(idx(K))%offset
+
+        if(.not.BOREHOLE) ncsamp = ncsamp + 1
+        K = K + 1
+
+        deallocate(sorted_distances)
+        deallocate(idx)
+      end do
+
+    end select
+      
+    end do
   end if
 
-  allocate(ltri(nrow,2*ndata-5))
-  call trlist ( ncc, lcc, ndata, list, lptr, lend, nrow, nt2, ltri, lct, ier )
-  open(78, file="list_triangulation.txt", status="unknown")
-  do I = 1, ndata
-    write(78,*) ltri(1:6,I)
-  end do
-  close(78)
-  open(78, file="list_segments.txt", status="unknown")
-  do I = 1, nt2
-    A = ltri(1,I)
-    B = ltri(2,I)
-    C = ltri(3,I)
-    write(78,*) sample(A)%lat, sample(A)%lon, sample(B)%lat, sample(B)%lon
-    write(78,*) sample(B)%lat, sample(B)%lon, sample(C)%lat, sample(C)%lon
-    write(78,*) sample(C)%lat, sample(C)%lon, sample(A)%lat, sample(A)%lon
-  end do
-  close(78)
-  deallocate(ltri)
+  if(CIRCLE_DEF == VORONOI) then 
+    NCC = 0 
+    ! Initialize arrays, LIST, LPTR, LEND, LNEW, NEAR, NEXT, DIST, IER
+    IER = 0
+    allocate(LIST(6 * ndata - 12))
+    allocate(LPTR(6 * ndata - 12))
+    allocate(LEND(ndata))
+    allocate(NEAR(ndata))
+    allocate(NEXT(ndata))
+    allocate(DIST(ndata))
 
-  ! Find neigbours of each sample
-  allocate(NNABS(ndata))
-  allocate(NPTR(ndata))
-  allocate(NPTR1(ndata))
-  allocate(NABOR(ndata))
-  allocate(NBNOS(ndata))
+    ! Calculate delaunay triangulation using TRIPACK
 
-  do I=1, ndata
+    !write(*, '(a)') "TRIPACK library"
+    !write(*, '(a,i6)') "The number of nodes is ", ndata
 
-    call find_node_neighbors(I,LIST, LPTR, LEND, NABOR, ncandidates)
-
-    ! Exclude neighbors beyond MAXSEARCHRADIUS
-    KK = 0
-    do L = 1, ncandidates
-      candidate = NABOR(L)
-      if(distances(I,candidate).lt.MAXSEARCHRADIUS) then
-        KK = KK + 1
-        sample(I)%neighbours(KK) = candidate
-      end if
-    end do
-
-    ! Include samples within MINSEARCHRADIUS
-    do J =1, ndata
-      if(distances(I,J) .lt. MINSEARCHRADIUS) then
-        ADD_POINTS = .TRUE.
-        do L=1,KK
-          if (J .eq. sample(I)%neighbours(L)) ADD_POINTS = .FALSE.
-        end do
-        if(ADD_POINTS .and. J .ne. I) then
-          KK = KK + 1
-          sample(I)%neighbours(KK) = J
-        end if
-      end if
-    end do
-
-    ! Add the centre to the neighbors list
-    ! We first check that it has not been included already.
-    ADD_POINTS = .TRUE.
-    do L=1, KK
-      if (J .eq. sample(I)%neighbours(L)) ADD_POINTS = .FALSE.
-    end do
-    if(ADD_POINTS) then
-      KK = KK + 1
-      sample(I)%neighbours(KK) = I
-      sample(I)%nneighbours = KK
+    ! Create the Delaunay triangulation (TRMESH), and test for errors
+    call TRMESH(ndata, sample%x, sample%y,&
+                LIST, LPTR, LEND,LNEW, NEAR, NEXT, DIST,ier) 
+    if ( ier == -2 ) then
+      write ( *, '(a)' ) ' '
+      write ( *, '(a)' ) '  Error in TRMESH:'
+      write ( *, '(a)' ) '  The first three nodes are collinear.'
+      stop
+    else if ( ier == -4 ) then
+      write ( *, '(a)' ) ' '
+      write ( *, '(a)' ) '  Error in TRMESH:'
+      write ( *, '(a)' ) '  Invalid triangulation.'
+      stop
+    else if ( 0 < ier ) then
+      write ( *, '(a)' ) ' '
+      write ( *, '(a)' ) '  Error in TRMESH:'
+      write ( *, '(a)' ) '  Duplicate nodes encountered.'
+      stop
+    else if ( ier > 0) then
+      write ( *, '(a)' ) ' Error '
+      stop 
     end if
 
-    do L=1, kk 
-      J = sample(I)%neighbours(L) 
-      sample(I)%neighbours_ncounts(L) = sample(J)%ncounts
-      sample(I)%neighbours_zeta(L)    = sample(J)%zeta
-      sample(I)%neighbours_rhodos(L)  = sample(J)%rhod
 
-      do K=1, sample(J)%ncounts
-        sample(I)%neighbours_NS(L,K) = sample(J)%NS(K)
-        sample(I)%neighbours_NI(L,K) = sample(J)%NI(K)       
-      enddo 
+    prntx = .true.
+    allocate(ltri(nrow,2*ndata-5))
+    !call trprnt ( ncc, lcc, ndata, sample%x, sample%y, list, lptr, lend, prntx )
+    call trlist ( ncc, lcc, ndata, list, lptr, lend, nrow, nt2, ltri, lct, ier )
+    open(78, file="list_triangulation.txt", status="unknown")
+    do I = 1, ndata
+      write(78,*) ltri(1:6,I)
+    end do
+    close(78)
+    open(78, file="list_segments.txt", status="unknown")
+    do I = 1, nt2
+      A = ltri(1,I)
+      B = ltri(2,I)
+      C = ltri(3,I)
+      write(78,*) sample(A)%lat, sample(A)%lon, sample(B)%lat, sample(B)%lon
+      write(78,*) sample(B)%lat, sample(B)%lon, sample(C)%lat, sample(C)%lon
+      write(78,*) sample(C)%lat, sample(C)%lon, sample(A)%lat, sample(A)%lon
+    end do
+    close(78)
+    !call trlprt ( ncc, lct, ndata, sample%x, sample%y, nrow, nt2, ltri, prntx )
+    deallocate(ltri)
 
-      sample(I)%neighbours_ages(L)     = sample(J)%FTage
-      sample(I)%neighbours_ages_err(L) = sample(J)%FTage_err
-      sample(I)%neighbours_ntl(L)      = sample(J)%ntl
+    ! Find neigbours of each sample
+    allocate(NNABS(ndata))
+    allocate(NPTR(ndata))
+    allocate(NPTR1(ndata))
+    allocate(NABOR(ndata))
+    allocate(NBNOS(ndata))
 
-      do K=1, sample(J)%ntl
-        sample(I)%neighbours_TL(L,K) = sample(J)%TL(K)
-      enddo
+    do I=1, ndata
 
-      sample(I)%neighbours_MTL(L)     = sample(J)%MTL
-      sample(I)%neighbours_MTL_err(L) = sample(J)%MTL_err
-      sample(I)%neighbours_offsets(L) = sample(J)%offset
-      sample(I)%neighbours_distances(L)  = distances(I,J)
+      call find_node_neighbors(I,LIST, LPTR, LEND, NABOR, ncandidates)
+
+      ! Exclude neighbors beyond MAXSEARCHRADIUS
+      MAXSEARCHRADIUS = 25._r4 * 1000._r4
+      KK = 0
+      do L = 1, ncandidates
+        candidate = NABOR(L)
+        if(distances(I,candidate).lt.MAXSEARCHRADIUS) then
+          KK = KK + 1
+          sample(I)%neighbours(KK) = candidate
+        end if
+      end do
+
+      ! Include samples within circle distance
+      do J =1, ndata
+        if(distances(I,J) .lt. MAXSEARCHRADIUS) then
+          ADD_POINTS = .TRUE.
+          do L=1,KK
+            if (J .eq. sample(I)%neighbours(L)) ADD_POINTS = .FALSE.
+          end do
+          if(ADD_POINTS .and. J .ne. I) then
+            KK = KK + 1
+            sample(I)%neighbours(KK) = J
+          end if
+        end if
+      end do
+      
+      ! Add the centre to the neighbors list
+      ! We first check that it has not been included already.
+      ADD_POINTS = .TRUE.
+      do L=1, KK
+        if (J .eq. sample(I)%neighbours(L)) ADD_POINTS = .FALSE.
+      end do
+      if(ADD_POINTS) then
+        KK = KK + 1
+        sample(I)%neighbours(KK) = I
+        sample(I)%nneighbours = KK
+      end if
+
+      do L=1, kk 
+        J = sample(I)%neighbours(L) 
+        sample(I)%neighbours_ncounts(L) = sample(J)%ncounts
+        sample(I)%neighbours_zeta(L)    = sample(J)%zeta
+        sample(I)%neighbours_rhodos(L)  = sample(J)%rhod
+
+        do K=1, sample(J)%ncounts
+          sample(I)%neighbours_NS(L,K) = sample(J)%NS(K)
+          sample(I)%neighbours_NI(L,K) = sample(J)%NI(K)       
+        enddo 
+
+        sample(I)%neighbours_ages(L)     = sample(J)%FTage
+        sample(I)%neighbours_ages_err(L) = sample(J)%FTage_err
+        sample(I)%neighbours_ntl(L)      = sample(J)%ntl
+
+        do K=1, sample(J)%ntl
+          sample(I)%neighbours_TL(L,K) = sample(J)%TL(K)
+        enddo
+
+        sample(I)%neighbours_MTL(L)     = sample(J)%MTL
+        sample(I)%neighbours_MTL_err(L) = sample(J)%MTL_err
+        sample(I)%neighbours_offsets(L) = sample(J)%offset
+        sample(I)%neighbours_distances(L)  = distances(I,J)
+       end do
+     
     end do
 
+
+    deallocate(LIST)
+    deallocate(LPTR)
+    deallocate(LEND)
+    deallocate(NEAR)
+    deallocate(NEXT)
+    deallocate(DIST)
+    deallocate(NNABS)
+    deallocate(NPTR)
+    deallocate(NPTR1)
+    deallocate(NABOR)
+    deallocate(NBNOS)
+
+  end if
+
+  ! Create an output showing the relationships between samples (Connection from
+  ! centroid to samples circle)
+  open(62, file="results/Circles_connections.txt", status="unknown")
+  do I = 1, ndata
+    do J = 1, sample(I)%nneighbours
+      if(I.ne.sample(I)%neighbours(J)) write(62, '(i4,a7,i4)') I, " ----->", sample(I)%neighbours(J)
+    end do    
   end do
+  close(62)
 
-
-  deallocate(LIST)
-  deallocate(LPTR)
-  deallocate(LEND)
-  deallocate(NEAR)
-  deallocate(NEXT)
-  deallocate(DIST)
-  deallocate(NNABS)
-  deallocate(NPTR)
-  deallocate(NPTR1)
-  deallocate(NABOR)
-  deallocate(NBNOS)
-
-  ! ========================================================================================
-  ! ========================================================================================
-  !                                    Invert neighbours
-  ! ========================================================================================
-  ! ========================================================================================
+  ! invert neighbours
 
   do I=1,ndata
     write(*,'(a36,a20,a10,i4,a4,i3,a1)',advance='no') "Inverting neighbours around sample:",&
-      & trim(sample(I)%s1name),"with ID: ", I,"(N=",sample(I)%nneighbours,")"
-
+     & trim(sample(I)%s1name),"with ID: ", I,"(N=",sample(I)%nneighbours,")"
+   
     ! Initialize all arrays (Must be done before doing calculation) 
     kk                = sample(I)%nneighbours 
     fwd_ages(1:kk)    = sample(I)%neighbours_ages(1:kk)
@@ -420,39 +534,39 @@
     do J=1,fwd_ndata
 
       do k=1,fwd_ncounts(J)
-        fwd_NS(J,k) = sample(I)%neighbours_NS(J,K)
-        fwd_NI(J,k) = sample(I)%neighbours_NI(J,K)
+       fwd_NS(J,k) = sample(I)%neighbours_NS(J,K)
+       fwd_NI(J,k) = sample(I)%neighbours_NI(J,K)
       enddo
 
       do k=1,fwd_ntl(J)
         fwd_TL(J,k) = sample(I)%neighbours_TL(J,K)
       enddo
     enddo  
-
+    
 
     ! Prepare the parameter space for NA
     model_id=I
     sampleid=I
     time_sequence=.FALSE.
     !time_sequence(1:3)=.TRUE. ! The first three parameters are part of a time sequence
-    range(1,1:(ttpoints-1))   = SEARCHBOX(START,TIME)
-    range(2,1:(ttpoints-1))   = SEARCHBOX(END,TIME)
-    range(1,4:(2*ttpoints-1)) = SEARCHBOX(START,TEMPERATURE)
-    range(2,4:(2*ttpoints-2)) = SEARCHBOX(END,TEMPERATURE)
-    range(2,(2*ttpoints-1))   = MAXSURFTEMP
-
+    range(1,1:(ttpoints-1))   = 0._r4   ! Time
+    range(2,1:(ttpoints-1))   = 500._r4 ! Time
+    range(1,4:(2*ttpoints-1)) = 0._r4   ! Temperature
+    range(2,4:(2*ttpoints-2)) = 150._r4 ! Temperature
+    range(2,(2*ttpoints-1))   = 20._r4  ! Temperature
+    
     mfitmin = 0.
 
     ! ATTENTION: NA calls the forward model which update some variables in the
     ! modules.
-
+        
     call na(nd,range)
 
     write(*,*) "misfit:", mfitmin
 
     sample(I)%misfit                     = mfitmin
     sample(I)%bestpath(1,1:(ttpoints-1)) = model_opt(1:(ttpoints-1))
-    sample(I)%bestpath(1,ttpoints)       = FINALTIME
+    sample(I)%bestpath(1,ttpoints)       = 500._r4
     sample(I)%bestpath(2,:)              = model_opt(4:(2*ttpoints-1))
 
 
@@ -461,10 +575,10 @@
     else
       sample(I)%bestgeotherm = geotherm
     endif
-
+    
   enddo  
-
-
+  
+  
   ! find family and best model
   ! We need to calculate a sample level misfit for each possible thermal history
   ! (i.e. for each fammily that the sample is a potential member of)
@@ -473,7 +587,7 @@
 
   do I = 1,ndata
     write(*,*) "looking for family and optimum model for sample: ", I
-
+ 
     FIRST_PATH = .TRUE.
 
     do J = 1,ndata
@@ -495,7 +609,7 @@
 
           ! Calculate the Log-likelihood
           call loglike_FT(AFTA, MTL, sample(I)%zeta, sample(I)%rhod, sample(I)%NS,&
-            & sample(I)%NI, sample(I)%NCOUNTS, llFT)
+                         & sample(I)%NI, sample(I)%NCOUNTS, llFT)
           call loglike_TL(200, sample(I)%NTL, sample(I)%TL, FTLD, llTL)
 
           LKH = llFT + llTL
@@ -519,7 +633,7 @@
     enddo
   enddo
 
-
+  
   ! Create an output showing the relationships between samples (Connection from
   ! centroid to samples family)
   open(62, file="results/Family_connections.txt", status="unknown")
@@ -536,25 +650,25 @@
   write(LU_output,'(2a15,8a10)') "Sample Name", "Lowest Misfit", "t1","t2","t3","t4","T1","T2","T3","T4" 
   do I=1,ndata  
     write(LU_output,'(a15,f15.1,8f10.1)') sample(I)%s2name,sample(I)%optimum_LKH,sample(I)%optimum_path(1,:),&
-      &sample(I)%optimum_path(2,:)
+    &sample(I)%optimum_path(2,:)
   enddo
 
   ! Determine temperature at each time-step (for output purpose)
   do I = 1, ndata
     sample(I)%time_rec(1:nmaps) = maps
     do J = 1, nmaps
-      sample(I)%temp_rec(J) = interp1(sample(I)%optimum_path(1,:),sample(I)%optimum_path(2,:), FINALTIME - maps(J))
+      sample(I)%temp_rec(J) = interp1(sample(I)%optimum_path(1,:),sample(I)%optimum_path(2,:), 500 - maps(J))
     end do
   end do
 
   ! Determine cooling rate at each time-step (for output purpose)
   do I = 1, ndata
     do J = 1, nmaps
-      ! Locate points in the time-temperature history
-      K = locate(sample(I)%optimum_path(1,:), sample(I)%temp_rec(J))
+    ! Locate points in the time-temperature history
+    K = locate(sample(I)%optimum_path(1,:), sample(I)%temp_rec(J))
       if(K.gt.0) then
         sample(I)%Erate_rec(J) = (sample(I)%optimum_path(2,K+1) - sample(I)%optimum_path(2,K)) / &
-          & (sample(I)%optimum_path(1,K+1) - sample(I)%optimum_path(1,K)) 
+    	  & (sample(I)%optimum_path(1,K+1) - sample(I)%optimum_path(1,K)) 
       end if
     end do 
   end do
@@ -670,7 +784,7 @@ subroutine forward(nd,NA_param,misfit)
   NPOINTS = 4
 
   TIME(1:3)=NA_param(1:3)
-  TIME(4)=FINALTIME
+  TIME(4)=500._r4
   TEMP(1:4)=NA_param(4:7)
   if(search_geo) geotherm=NA_param(8)   
   ftage=0._r4
@@ -704,7 +818,7 @@ subroutine forward(nd,NA_param,misfit)
   !========== Calculate fission track ages
   LKH_FTAGE=1e22           
   do K=1,fwd_ndata
-
+   
     ! Need to update Npoints as it may be changed by AdjustHistory 
     NPOINTS = 4 
     allocate(Ketcham_time(2*NPOINTS))
@@ -721,8 +835,8 @@ subroutine forward(nd,NA_param,misfit)
 
     call AdjustHistory(ketcham_time, ketcham_temp, surface_temperature, NPOINTS)
     call ketch_main(NPOINTS,ketcham_time,ketcham_temp,&
-      real(alo,8),ketcham_ftage,oldest_age,ketcham_ftldmean,&
-      ketcham_ftldistrib)
+                    real(alo,8),ketcham_ftage,oldest_age,ketcham_ftldmean,&
+                    ketcham_ftldistrib)
 
     deallocate(Ketcham_time)
     deallocate(Ketcham_temp)
@@ -730,10 +844,10 @@ subroutine forward(nd,NA_param,misfit)
     ftage(K)=real(ketcham_ftage,4)
     ftldistrib(K,:)=real(ketcham_ftldistrib*100.,4)
     ftldmean(K)=real(ketcham_ftldmean,4)
-
+    
     if(fwd_ncounts(K).ne.0) then
       call loglike_FT(ftage(K), ftldmean(K), fwd_zeta(K), fwd_rhodos(K),&
-        &  fwd_ns(K,:), fwd_ni(K,:), fwd_ncounts(K), LKH_FTAGE(K))
+         &  fwd_ns(K,:), fwd_ni(K,:), fwd_ncounts(K), LKH_FTAGE(K))
     endif
 
     if(fwd_ntl(K).ne.0) then
@@ -841,7 +955,7 @@ subroutine writemodels (nd,ntot,models,misfit,ns1,ns2,itmax, &
 
   write (87,'(80a)') ("-", I = 1, 80)
   write (87, *) "Model with lowest misfit"
-  write (87, 302) mfitmin, model_opt(1:(ttpoints-1)), FINALTIME, model_opt(4:(2*ttpoints-1))  
+  write (87, 302) mfitmin, model_opt(1:(ttpoints-1)), 500._r4, model_opt(4:(2*ttpoints-1))  
   write (87,'(80a)') ("-", I = 1, 80)
   write (87, *) "List of models" 
   write (87,'(80a)') ("-", I = 1, 80)

@@ -86,6 +86,7 @@ end module CFC
 module fwd
   use precision_kind
   real(kind=r4) :: MAXSEARCHRADIUS
+  real(kind=r4) :: FINALTIME
   integer,parameter :: NSAMPLEMAX=100
   integer,parameter :: NCOUNTMAX=100
   integer,parameter :: NTLMAX=400

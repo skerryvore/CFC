@@ -8,6 +8,7 @@ from itertools import islice
 import matplotlib.colors as mc
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
+from matplotlib.colors import LogNorm
 import gdal
 
 __author__ = "Romain Beucher"
@@ -91,6 +92,7 @@ if __name__ == "__main__":
     line_segments.set_array(mvals)
     line_segments.set_cmap(cm.jet)
     line_segments.set_alpha(0.3)
+    line_segments.set_norm(LogNorm())
     ax = plt.subplot()
     ax.set_xlim(0,500)
     ax.set_ylim(0,150)

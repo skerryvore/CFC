@@ -1,17 +1,40 @@
-
 import osgeo.ogr as ogr
 import osgeo.osr as osr
+import numpy as np
+from scipy import interpolate
 
-# use a dictionary reader so we can access by field name
-reader = csv.DictReader(open("volcano_data.txt","rb"),
-        delimiter='\t',
-        quoting=csv.QUOTE_NONE)
+
+def FindTempAtTime(t, T, x):
+    f = interpolate.interp1d(t, T, bounds_error=False, fill_value=-9999)
+    Tx = f(x)
+    return Tx
+
+ti = 400.0
+inputFile = "KingsCanyon_out.txt"
+
+f = open(inputFile,"r")
+# Skip header
+header = f.readline()
+
+listofsamples = []
+for line in f:
+    line = line.strip()
+    columns = line.split()
+    source = {}
+    source['Name'] = columns[0]
+    source['Misfit'] = float(columns[1])
+    source['Latitude'] = float(columns[2])
+    source['Longitude'] = float(columns[3])
+    source['Time'] = [float(columns[i]) for i in range(4,8)]
+    source['Temperature'] = [float(columns[i]) for i in range(8,12)]
+    listofsamples.append(source)
+
 
 # set up the shapefile driver
 driver = ogr.GetDriverByName("ESRI Shapefile")
 
 # create the data source
-data_source = driver.CreateDataSource("Temp.shp")
+data_source = driver.CreateDataSource("Temperatures.shp")
 
 # create the spatial reference, WGS84
 srs = osr.SpatialReference()
@@ -26,21 +49,22 @@ field_name.SetWidth(24)
 layer.CreateField(field_name)
 layer.CreateField(ogr.FieldDefn("Latitude", ogr.OFTReal))
 layer.CreateField(ogr.FieldDefn("Longitude", ogr.OFTReal))
-layer.CreateField(ogr.FieldDefn("Temperature", ogr.OFTInteger))
+layer.CreateField(ogr.FieldDefn("Temp", ogr.OFTReal))
 
 # Process the text file and add the attributes and features to the shapefile
-for row in reader:
+for sample in listofsamples:
     # create the feature
     feature = ogr.Feature(layer.GetLayerDefn())
     # Set the attributes using the values from the delimited text file
-    feature.SetField("Name", row['Name'])
-    feature.SetField("Region", row['Region'])
-    feature.SetField("Latitude", row['Latitude'])
-    feature.SetField("Longitude", row['Longitude'])
-    feature.SetField("Elevation", row['Elev'])
+    feature.SetField("Name", sample['Name'])
+    feature.SetField("Latitude", sample['Latitude'])
+    feature.SetField("Longitude", sample['Longitude'])
+    # Get Temperature at time ti
+    Temperature = FindTempAtTime(sample['Time'], sample['Temperature'],ti) 
+    feature.SetField("Temp", float(Temperature))
 
     # create the WKT for the feature using Python string formatting
-    wkt = "POINT(%f %f)" %  (float(row['Longitude']) , float(row['Latitude']))
+    wkt = "POINT(%f %f)" %  (float(sample['Longitude']) , float(sample['Latitude']))
 
     # Create the point from the Well Known Txt
     point = ogr.CreateGeometryFromWkt(wkt)

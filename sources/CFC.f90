@@ -48,6 +48,7 @@ implicit none
   logical :: lroot  
   logical :: debug
   logical :: FIRST_PATH, BOREHOLE
+  logical :: ADD_POINTS
   logical :: time_sequence(10)
   logical :: prntx
   real(kind=r4) :: t1,t2
@@ -433,12 +434,32 @@ implicit none
           sample(I)%neighbours(KK) = candidate
         end if
       end do
+
+      ! Include samples within circle distance
+      do J =1, ndata
+        if(distances(I,J) .lt. MAXSEARCHRADIUS) then
+          ADD_POINTS = .TRUE.
+          do L=1,KK
+            if (J .eq. sample(I)%neighbours(L)) ADD_POINTS = .FALSE.
+          end do
+          if(ADD_POINTS .and. J .ne. I) then
+            KK = KK + 1
+            sample(I)%neighbours(KK) = J
+          end if
+        end if
+      end do
       
       ! Add the centre to the neighbors list
-      KK = KK+1
-      sample(I)%neighbours(KK) = I
-      sample(I)%nneighbours = KK
-
+      ! We first check that it has not been included already.
+      ADD_POINTS = .TRUE.
+      do L=1, KK
+        if (J .eq. sample(I)%neighbours(L)) ADD_POINTS = .FALSE.
+      end do
+      if(ADD_POINTS) then
+        KK = KK + 1
+        sample(I)%neighbours(KK) = I
+        sample(I)%nneighbours = KK
+      end if
 
       do L=1, kk 
         J = sample(I)%neighbours(L) 

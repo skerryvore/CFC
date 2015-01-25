@@ -2,7 +2,7 @@
 
 # use these lines to produce a parallel (mpi) version to parallelize the inversion
 
-FLAGS = -g -L./LIB/shapelib-1.3.0/ -lshp -lgdal -I/usr/include -c -O \
+FLAGS = -g -lgdal -I/usr/include -c -O \
 -fbounds-check \
 -Wunused-parameter
 #-fcheck-array-temporaries \
@@ -22,9 +22,6 @@ na.o \
 Ketcham.o \
 read_mtx.o \
 CFC.o \
-shape.o \
-dbf.o \
-gdal.o \
 troutq.o \
 tripack.o \
 locategdal.o \
@@ -47,7 +44,7 @@ calc_distance.o
 	$(CPP) $(CPPFLAGS) $*.cpp
 
 NCFA:$(OBJECTS)
-	$(FF90) $(OBJECTS) -L./LIB/shapelib-1.3.0 -lshp -lgdal -lm -lstdc++ -I/usr/include -o ../bin/NCFA
+	$(FF90) $(OBJECTS) -lgdal -lm -lstdc++ -I/usr/include -o ../bin/NCFA
 	
 all: $(OBJECTS)
 	make NFCA

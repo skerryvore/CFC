@@ -520,17 +520,6 @@
   enddo
 
 
-  ! Create an output showing the relationships between samples (Connection from
-  ! centroid to samples family)
-  open(62, file="results/Family_connections.txt", status="unknown")
-  do I = 1, ndata
-    do J = 1, sample(I)%nfamily
-      if(I.ne.sample(I)%family(J)) write(62, '(i4,a7,i4)') I, " ----->", sample(I)%family(J)
-    end do    
-  end do
-  close(62)
-
-
   ! write general results to output file
   open(LU_output,file = trim(adjustL(output_file)), status='unknown')
   write(LU_output,'(2a15,8a10)') "Sample Name", "Lowest Misfit", "t1","t2","t3","t4","T1","T2","T3","T4" 
@@ -539,84 +528,11 @@
       &sample(I)%optimum_path(2,:)
   enddo
 
-  ! Determine temperature at each time-step (for output purpose)
-  do I = 1, ndata
-    sample(I)%time_rec(1:nmaps) = maps
-    do J = 1, nmaps
-      sample(I)%temp_rec(J) = interp1(sample(I)%optimum_path(1,:),sample(I)%optimum_path(2,:), FINALTIME - maps(J))
-    end do
-  end do
-
-  ! Determine cooling rate at each time-step (for output purpose)
-  do I = 1, ndata
-    do J = 1, nmaps
-      ! Locate points in the time-temperature history
-      K = locate(sample(I)%optimum_path(1,:), sample(I)%temp_rec(J))
-      if(K.gt.0) then
-        sample(I)%Erate_rec(J) = (sample(I)%optimum_path(2,K+1) - sample(I)%optimum_path(2,K)) / &
-          & (sample(I)%optimum_path(1,K+1) - sample(I)%optimum_path(1,K)) 
-      end if
-    end do 
-  end do
-
-
-  ! Write a new lat, lon, temperature file at each output time.
-  do J = 1, nmaps 
-    write(filename,*) int(maps(J))
-    open(71, file="results/Temp"//trim(adjustl(filename))//".txt", status="unknown")
-    write(71,*) "X Y Temp E dT/dz dz/dt"
-    do I = 1, ndata
-      write(71,'(2f15.2, 4f5.2)') sample(I)%x, sample(I)%y, sample(I)%temp_rec(J),sample(I)%Erate_rec(J), &
-        & sample(I)%optimum_geotherm, sample(I)%Erate_rec(J) / sample(I)%optimum_geotherm
-    end do
-    close(71)
-  end do
-
-  ! Create a shapefile at each output time
-
-  do J = 1, nmaps
-
-    write(filename,*) int(maps(J))
-    ! For now the code just creates a shapefile with 2 points at a random location
-    ! I am still working on the routine that has to be written in C
-
-    call create_shape_points(1_c_int, "Temp"//trim(adjustL(filename))//".shp"//achar(0),&
-      &  real(sample(:)%x,c_double), real(sample(:)%y, c_double), int(ndata,i8))
-
-    ! Create the .prj file associated to the shapefile
-    ! The coordinate system is identical to the input topography file so
-    ! we just need to copy the information from the topo.prj
-    !open(71,file="./DEM/"//trim(adjustL(dem_file(1:index(dem_file,".asc",.false.)))//"prj"),status='old')
-    !read(71,'(a)') line
-    !close(71)
-    !open(71,file="Temp"//trim(adjustL(filename))//".prj",status="Unknown")
-    !write(71,'(a)') trim(adjustL(line))
-    !close(71)
-
-    ! Create a dbf file
-    do I = 1, ndata
-      stringArray(I) = sample(I)%s1name//C_NULL_CHAR
-      stringPtrs(I) = C_LOC(stringArray(I))
-    end do
-
-    call createDBF("Temp"//trim(adjustL(filename))//".dbf"//achar(0),&
-      & sample(:)%id, int(ndata,i8),  real(sample(:)%x, c_double),&
-      & real(sample(:)%y, c_double), &
-      & real(sample(:)%dem_elevation, c_double), stringPtrs(1:ndata),&
-      & real(sample(:)%temp_rec(J), c_double), real(sample(:)%ERate_rec(J), c_double),&
-      & real(sample(:)%optimum_geotherm,c_double), &
-      & real(sample(:)%ERate_rec(J) / sample(:)%optimum_geotherm, c_double), &
-      & real(sample(:)%FTage, c_double))
-
-  end do
-
   call CPU_TIME(t2)
   write(*,*) 'Computing time: ',(t2 - t1)/60 ,'minutes'
 
-
   deallocate(sample)
   deallocate(distances)
-
 
   ! close files
   close(LU_param)

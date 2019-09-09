@@ -1,0 +1,16 @@
+
+version: '3' 
+services:     
+    cfc:
+        build:
+          context: $PWD
+          dockerfile: Dockerfile
+        container_name: cfc
+        hostname: cfc
+        volumes:
+            - $PWD:/home/CFC 
+        working_dir: /home/CFC
+        entrypoint: /bin/bash
+        environment: 
+            - C_INCLUDE_PATH=/usr/include/gdal
+            - CPLUS_INCLUDE_PATH=/usr/include/gdal

@@ -18,7 +18,8 @@ def helfrag_plot(filename="./RUN00/NA_HELFRAG_results_step1.txt",range_time=[0,5
 
     data=np.genfromtxt(filename, skip_header=skip+1)
     reject = 1e21
-    data = data[data[:,0] < reject]
+    # Filter out models that included reverse time segments, i.e. null misfit flag set
+    data = data[data[:,0] < reject] 
 
     # Sort the data
     data = data[data[:,0].argsort()]
@@ -128,6 +129,7 @@ if __name__ == "__main__":
     if(output == "file"):
         string=filename
         string=string.split(sep=".")[0]
+        print("Drawing Tt plot: ",string+".png")
         plt.savefig(string+".png")
 
 

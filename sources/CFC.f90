@@ -207,7 +207,7 @@
   enddo
 
 
-  ! Get UTM Coordinates
+  ! Get UTM Coordinates (uses gdal library)
   do I=1,ndata
     call LatLon2UTM(real(sample(I)%lon, kind=c_double),&
       real(sample(I)%lat, kind=c_double),&

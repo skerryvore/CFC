@@ -96,6 +96,7 @@ ax2.add_collection(line_segments2)
 if(output == "file"):
     string = filename
     string2 = string.split(sep=".")[0]
+    print("Drawing Map: ",string2+".png")
     plt.savefig(string2+".png")
 
 if(output == "screen"):
